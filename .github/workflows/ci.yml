@@ -45,7 +45,8 @@ jobs:
       - name: Validate version and formatting
         run: |
           python scripts/release.py validate --version "$GRIP_VERSION"
-          test -z "$(gofmt -l cmd internal)"
+          UNFORMATTED="$(gofmt -l cmd internal)"
+          if [ -n "$UNFORMATTED" ]; then printf "%s\n" "$UNFORMATTED"; exit 1; fi
           go mod verify
       - name: Unit and native scanner integration tests
         env:

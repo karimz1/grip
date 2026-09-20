@@ -62,7 +62,7 @@ def formula(tag, checksums, repository="karimz1/grip"):
         raise ValueError("invalid GitHub repository")
     result = ['class Grip < Formula', '  desc "See which processes are using your files"',
               f'  homepage "https://github.com/{repository}"', f'  version "{tag[1:]}"',
-              '  license "MIT"', '  conflicts_with "grip", because: "both install a grip executable"', '']
+              '  license "MIT"', '  conflicts_with "homebrew/core/grip", because: "both install a grip executable"', '']
     for system, block in [("darwin", "macos"), ("linux", "linux")]:
         result.append(f"  on_{block} do")
         for arch, brewarch in [("arm64", "arm"), ("amd64", "intel")]:

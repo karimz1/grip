@@ -43,7 +43,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The Release workflow reruns the full matrix for that tag. If any target fails, no draft
+The Release workflow reruns the full matrix for that tag and installs/tests the generated Homebrew formula on Linux and macOS. If any target fails, no draft
 is created. A passing run uploads seven raw executables, seven archives, `checksums.txt`
 and a generated `grip.rb` to the draft release. Version strings omit the leading `v`.
 

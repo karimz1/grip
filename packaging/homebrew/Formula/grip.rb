@@ -5,7 +5,7 @@ class Grip < Formula
   head "git@github.com:karimz1/grip.git", branch: "main", using: :git
 
   depends_on "go" => :build
-  conflicts_with "grip", because: "both install a grip executable"
+  conflicts_with "homebrew/core/grip", because: "both install a grip executable"
 
   def install
     ENV["CGO_ENABLED"] = "0"

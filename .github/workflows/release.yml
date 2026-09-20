@@ -31,8 +31,47 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       version: ${{ inputs.tag || github.ref_name }}
-  draft:
+  homebrew:
     needs: test
+    name: Homebrew / ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: grip-*
+          merge-multiple: true
+          path: dist
+      - name: Prepare the real release formula with local archive URLs
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python3 scripts/release.py assemble --version "$TAG"
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+          p=Path('dist/grip.rb')
+          s=p.read_text()
+          s=re.sub(r'https://github.com/karimz1/grip/releases/download/[^/]+/',Path('dist').resolve().as_uri()+'/',s)
+          p.write_text(s)
+          PYCODE
+      - name: Install and test the generated formula
+        shell: bash
+        run: |
+          if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          fi
+          brew tap-new karimz1/grip-ci --no-git
+          cp dist/grip.rb "$(brew --repository karimz1/grip-ci)/Formula/grip.rb"
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install --formula karimz1/grip-ci/grip
+          HOMEBREW_NO_AUTO_UPDATE=1 brew test karimz1/grip-ci/grip
+  draft:
+    needs: [test, homebrew]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
