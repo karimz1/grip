@@ -206,10 +206,14 @@ func (a *App) footer() []string {
 	case helpScreen:
 		return []string{accent.Render("↑↓ scroll   Esc back")}
 	default:
-		if a.width < 65 {
-			return []string{accent.Render("↑↓ move  Enter inspect  Space select"), accent.Render("k stop  x force  K/X bulk  / filter  r refresh  a auto  ?  q")}
+		auto := muted.Render("[a] AUTO-REFRESH: OFF")
+		if a.autoRefresh {
+			auto = accent.Render("[a] AUTO-REFRESH: ON")
 		}
-		return []string{accent.Render("↑↓ navigate  Enter inspect  Space select  / filter"), accent.Render("k terminate  x force  K/X bulk  r refresh  a auto  ? help  q quit")}
+		if a.width < 65 {
+			return []string{accent.Render("↑↓ move  Enter inspect  Space select"), accent.Render("k stop  x force  K/X bulk  / filter  r refresh  ") + auto + accent.Render("  ?  q")}
+		}
+		return []string{accent.Render("↑↓ navigate  Enter inspect  Space select  / filter"), accent.Render("k terminate  x force  K/X bulk  r refresh  ") + auto + accent.Render("  ? help  q quit")}
 	}
 }
 

@@ -28,7 +28,9 @@ type scanMsg struct {
 	err        error
 }
 type pulseMsg struct{}
-type refreshMsg struct{}
+type refreshMsg struct {
+	periodic bool
+}
 type killMsg struct {
 	sent     int
 	failures []string
@@ -82,7 +84,7 @@ func pulse() tea.Cmd {
 	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return pulseMsg{} })
 }
 func autoRefreshTick() tea.Cmd {
-	return tea.Tick(autoRefreshInterval, func(time.Time) tea.Msg { return refreshMsg{} })
+	return tea.Tick(autoRefreshInterval, func(time.Time) tea.Msg { return refreshMsg{periodic: true} })
 }
 
 func (a *App) startScan() tea.Cmd {
@@ -110,13 +112,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.pulse = (a.pulse + 1) % 4
 		return a, pulse()
 	case refreshMsg:
-		if !a.autoRefresh {
+		if msg.periodic && !a.autoRefresh {
 			return a, nil
 		}
 		if a.scanning {
-			return a, autoRefreshTick()
+			if msg.periodic {
+				return a, autoRefreshTick()
+			}
+			return a, nil
 		}
-		return a, tea.Batch(a.startScan(), autoRefreshTick())
+		if msg.periodic {
+			return a, tea.Batch(a.startScan(), autoRefreshTick())
+		}
+		return a, a.startScan()
 	case scanMsg:
 		if msg.generation != a.generation {
 			return a, nil
@@ -217,6 +225,7 @@ func (a *App) updateMain(key string) tea.Cmd {
 		if a.cancelScan != nil {
 			a.cancelScan()
 		}
+		return tea.Quit
 	case "a":
 		a.autoRefresh = !a.autoRefresh
 		if a.autoRefresh {
@@ -226,7 +235,6 @@ func (a *App) updateMain(key string) tea.Cmd {
 		}
 		a.status = "Auto-refresh disabled."
 		a.statusError = false
-		return tea.Quit
 	case "up":
 		a.cursor = max(0, a.cursor-1)
 	case "down", "j":
