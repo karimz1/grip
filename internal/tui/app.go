@@ -1,0 +1,350 @@
+package tui
+
+import (
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"context"
+	"fmt"
+	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/grip/internal/scanner"
+	"strings"
+	"time"
+)
+
+type screen int
+
+const (
+	mainScreen screen = iota
+	detailScreen
+	confirmScreen
+	helpScreen
+)
+
+type scanMsg struct {
+	generation int
+	result     model.Result
+	err        error
+}
+type pulseMsg struct{}
+type killMsg struct {
+	sent     int
+	failures []string
+}
+
+type App struct {
+	ctx                context.Context
+	backend            scanner.Scanner
+	target             model.Target
+	width, height      int
+	result             model.Result
+	visible            []model.Process
+	selected           map[string]bool
+	cursor, offset     int
+	screen             screen
+	filter             textinput.Model
+	detailFilter       textinput.Model
+	usageTable         table.Model
+	usageRows          []model.Usage
+	pathOffset         int
+	filtering          bool
+	filterBefore       string
+	scanning, stopping bool
+	generation, pulse  int
+	cancelScan         context.CancelFunc
+	status             string
+	statusError        bool
+	detail             *model.Process
+	pending            []model.Process
+	force, confirm     bool
+}
+
+func New(ctx context.Context, backend scanner.Scanner, target model.Target) *App {
+	input := textinput.New()
+	input.Placeholder = "PID, process, user, path or access…"
+	input.Prompt = "/ "
+	input.CharLimit = 256
+	input.SetWidth(60)
+	detailInput := textinput.New()
+	detailInput.Placeholder = "DLL name, path, relation or access…"
+	detailInput.Prompt = "/ "
+	detailInput.CharLimit = 256
+	detailInput.SetWidth(60)
+	return &App{ctx: ctx, backend: backend, target: target, width: 80, height: 24, selected: make(map[string]bool), filter: input, detailFilter: detailInput, usageTable: newUsageTable()}
+}
+
+func (a *App) Init() tea.Cmd { return tea.Batch(a.startScan(), pulse()) }
+func pulse() tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return pulseMsg{} })
+}
+
+func (a *App) startScan() tea.Cmd {
+	if a.cancelScan != nil {
+		a.cancelScan()
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.cancelScan = cancel
+	a.generation++
+	generation := a.generation
+	a.scanning = true
+	backend, target := a.backend, a.target
+	return func() tea.Msg { result, err := backend.Scan(ctx, target); return scanMsg{generation, result, err} }
+}
+
+func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		a.width = max(1, msg.Width)
+		a.height = max(1, msg.Height)
+		a.filter.SetWidth(max(1, a.width-8))
+		a.detailFilter.SetWidth(max(1, a.width-8))
+		a.rebuildUsages(false)
+	case pulseMsg:
+		a.pulse = (a.pulse + 1) % 4
+		return a, pulse()
+	case scanMsg:
+		if msg.generation != a.generation {
+			return a, nil
+		}
+		a.scanning = false
+		if msg.err != nil {
+			a.status = "Scan failed: " + msg.err.Error()
+			a.statusError = true
+			return a, nil
+		}
+		var key string
+		if p := a.current(); p != nil {
+			key = p.Key()
+		}
+		a.result = msg.result
+		alive := make(map[string]bool)
+		for _, p := range a.result.Processes {
+			alive[p.Key()] = true
+		}
+		for k := range a.selected {
+			if !alive[k] {
+				delete(a.selected, k)
+			}
+		}
+		a.refilter()
+		for i, p := range a.visible {
+			if p.Key() == key {
+				a.cursor = i
+				break
+			}
+		}
+	case killMsg:
+		a.stopping = false
+		a.statusError = len(msg.failures) > 0
+		a.status = fmt.Sprintf("Termination requested for %d processes. Refresh to verify exit.", msg.sent)
+		if len(msg.failures) > 0 {
+			a.status += fmt.Sprintf(" %d failed: %s", len(msg.failures), strings.Join(msg.failures, "; "))
+		}
+		return a, a.startScan()
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
+			if a.cancelScan != nil {
+				a.cancelScan()
+			}
+			return a, tea.Quit
+		}
+		if a.filtering {
+			return a, a.updateFilter(msg)
+		}
+		switch a.screen {
+		case confirmScreen:
+			return a, a.updateConfirm(msg.String())
+		case detailScreen:
+			return a, a.updateDetails(msg.String())
+		case helpScreen:
+			switch msg.String() {
+			case "esc", "?", "q":
+				a.screen = mainScreen
+				a.offset = 0
+			case "down", "j":
+				a.offset++
+			case "up":
+				a.offset = max(0, a.offset-1)
+			}
+		default:
+			return a, a.updateMain(msg.String())
+		}
+	default:
+		if a.filtering {
+			return a, a.updateFilterInput(msg)
+		}
+	}
+	return a, nil
+}
+
+func (a *App) refilter() {
+	a.visible = nil
+	for _, p := range a.result.Processes {
+		if p.MatchesFilter(a.filter.Value()) {
+			a.visible = append(a.visible, p)
+		}
+	}
+	a.cursor = min(max(0, a.cursor), max(0, len(a.visible)-1))
+}
+func (a *App) current() *model.Process {
+	if len(a.visible) == 0 {
+		return nil
+	}
+	return &a.visible[min(a.cursor, len(a.visible)-1)]
+}
+
+func (a *App) updateMain(key string) tea.Cmd {
+	switch key {
+	case "q":
+		if a.cancelScan != nil {
+			a.cancelScan()
+		}
+		return tea.Quit
+	case "up":
+		a.cursor = max(0, a.cursor-1)
+	case "down", "j":
+		a.cursor = min(max(0, len(a.visible)-1), a.cursor+1)
+	case "pgup":
+		a.cursor = max(0, a.cursor-a.pageSize())
+	case "pgdown":
+		a.cursor = min(max(0, len(a.visible)-1), a.cursor+a.pageSize())
+	case "home", "g":
+		a.cursor = 0
+	case "end", "G":
+		a.cursor = max(0, len(a.visible)-1)
+	case "space":
+		if p := a.current(); p != nil {
+			if a.selected[p.Key()] {
+				delete(a.selected, p.Key())
+			} else {
+				a.selected[p.Key()] = true
+			}
+		}
+	case "enter":
+		if p := a.current(); p != nil {
+			copy := *p
+			a.detail = &copy
+			a.detailFilter.SetValue("")
+			a.screen = detailScreen
+			a.offset = 0
+			a.rebuildUsages(true)
+		}
+	case "/":
+		a.filterBefore = a.filter.Value()
+		a.filtering = true
+		return a.filter.Focus()
+	case "esc":
+		a.filter.SetValue("")
+		a.refilter()
+	case "r":
+		if !a.stopping {
+			return a.startScan()
+		}
+	case "?":
+		a.screen = helpScreen
+		a.offset = 0
+	case "k", "x", "K", "X":
+		a.prepareKill(key)
+	}
+	return nil
+}
+
+func (a *App) updateFilter(msg tea.KeyPressMsg) tea.Cmd {
+	input := a.activeFilter()
+	if a.screen == detailScreen {
+		switch msg.String() {
+		case "up", "down", "pgup", "pgdown":
+			return a.updateDetails(msg.String())
+		}
+	}
+	switch msg.String() {
+	case "enter":
+		a.filtering = false
+		input.Blur()
+		return nil
+	case "esc":
+		a.filtering = false
+		input.Blur()
+		input.SetValue(a.filterBefore)
+		a.filterChanged()
+		return nil
+	}
+	return a.updateFilterInput(msg)
+}
+
+func (a *App) activeFilter() *textinput.Model {
+	if a.screen == detailScreen {
+		return &a.detailFilter
+	}
+	return &a.filter
+}
+
+func (a *App) filterChanged() {
+	if a.screen == detailScreen {
+		a.offset = 0
+		a.rebuildUsages(true)
+		return
+	}
+	a.cursor = 0
+	a.refilter()
+}
+
+func (a *App) updateFilterInput(msg tea.Msg) tea.Cmd {
+	input := a.activeFilter()
+	before := input.Value()
+	updated, cmd := input.Update(msg)
+	*input = updated
+	if input.Value() != before {
+		a.filterChanged()
+	}
+	return cmd
+}
+
+func (a *App) updateDetails(key string) tea.Cmd {
+	switch key {
+	case "/":
+		a.filterBefore = a.detailFilter.Value()
+		a.filtering = true
+		a.offset = 0
+		return a.detailFilter.Focus()
+	case "esc":
+		if a.detailFilter.Value() != "" {
+			a.detailFilter.SetValue("")
+			a.offset = 0
+			a.rebuildUsages(true)
+			return nil
+		}
+		a.screen = mainScreen
+		a.offset = 0
+	case "q", "enter":
+		a.screen = mainScreen
+		a.offset = 0
+	case "down", "j":
+		a.usageTable.MoveDown(1)
+		a.pathOffset = 0
+	case "up":
+		a.usageTable.MoveUp(1)
+		a.pathOffset = 0
+	case "pgdown":
+		a.usageTable.MoveDown(max(1, a.usageTable.Height()))
+		a.pathOffset = 0
+	case "pgup":
+		a.usageTable.MoveUp(max(1, a.usageTable.Height()))
+		a.pathOffset = 0
+	case "home", "g":
+		a.usageTable.GotoTop()
+		a.pathOffset = 0
+	case "end", "G":
+		a.usageTable.GotoBottom()
+		a.pathOffset = 0
+	case "left":
+		a.pathOffset = max(0, a.pathOffset-1)
+	case "right":
+		a.pathOffset++
+	case "k", "x":
+		a.prepareKill(key)
+	}
+	return nil
+}
+
+func (a *App) pageSize() int { return max(1, a.height-11) }

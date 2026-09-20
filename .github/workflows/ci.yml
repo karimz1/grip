@@ -1,0 +1,78 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: dev
+permissions:
+  contents: read
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: linux, arch: amd64, runner: ubuntu-24.04, race: true}
+          - {os: linux, arch: arm64, runner: ubuntu-24.04-arm, race: true}
+          - {os: darwin, arch: amd64, runner: macos-15-intel, race: true}
+          - {os: darwin, arch: arm64, runner: macos-15, race: true}
+          - {os: windows, arch: amd64, runner: windows-2025, race: true}
+          - {os: windows, arch: arm64, runner: windows-11-arm, race: false}
+          - {os: windows, arch: '386', runner: windows-2025, race: false}
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOARCH: ${{ matrix.arch }}
+      GRIP_VERSION: ${{ inputs.version || 'dev' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.x'
+      - name: Validate version and formatting
+        run: |
+          python scripts/release.py validate --version "$GRIP_VERSION"
+          test -z "$(gofmt -l cmd internal)"
+          go mod verify
+      - name: Unit and native scanner integration tests
+        env:
+          CGO_ENABLED: '0'
+        run: go test -count=1 -timeout=5m ./...
+      - name: Race detector
+        if: matrix.race
+        env:
+          CGO_ENABLED: '1'
+        run: go test -race -count=1 -timeout=5m ./...
+      - name: Static analysis
+        run: go vet ./...
+      - name: Packaging tests
+        run: python -m unittest discover -s scripts -p 'test_*.py'
+      - name: Build standalone executable
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          VERSION="${GRIP_VERSION#v}"
+          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o bin/grip${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/grip
+          ./bin/grip${{ matrix.os == 'windows' && '.exe' || '' }} --version
+          ./bin/grip${{ matrix.os == 'windows' && '.exe' || '' }} --help
+      - name: Package tested executable
+        run: python scripts/release.py package --version "$GRIP_VERSION" --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --binary bin/grip${{ matrix.os == 'windows' && '.exe' || '' }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: grip-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7

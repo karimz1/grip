@@ -1,0 +1,65 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag (for example v0.1.0); select this tag as the workflow ref
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Require the selected tag to match this workflow revision
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python3 scripts/release.py validate --version "$TAG"
+          test "$TAG" != dev
+          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+          test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+  test:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ inputs.tag || github.ref_name }}
+  draft:
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: grip-*
+          merge-multiple: true
+          path: dist
+      - name: Verify all seven targets and generate checksums and Homebrew formula
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python3 scripts/release.py assemble --version "$TAG"
+          cd dist
+          sha256sum --check checksums.txt
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$TAG" --json isDraft >/tmp/release.json 2>/dev/null; then
+            python3 -c 'import json; assert json.load(open("/tmp/release.json"))["isDraft"], "Refusing to replace a published release"'
+          else
+            gh release create "$TAG" --verify-tag --draft --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --clobber
+          echo '### Release ready for review' >> "$GITHUB_STEP_SUMMARY"
+          echo 'All platform jobs passed. The release remains a draft until you publish it.' >> "$GITHUB_STEP_SUMMARY"
