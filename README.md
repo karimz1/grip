@@ -1,5 +1,7 @@
 # grip
 
+**Beta**
+
 **See what's using your files.**
 
 A terminal UI for finding and stopping processes that are using files and directories.
@@ -22,9 +24,7 @@ No argument means the current directory. An interactive terminal is required.
 
 ## Install
 
-This project and its tap are currently private. Build from your authenticated checkout
-today. Public release downloads and the Homebrew command below become available once
-the repositories and a tested release are published.
+This project is in beta. Install from a published release or build from source.
 
 ### From source
 
@@ -52,7 +52,7 @@ and put `grip` (or `grip.exe`) on your `PATH`. Each release includes `checksums.
 compare the download's SHA-256 before installing. Use `sha256sum` on Linux,
 `shasum -a 256` on macOS, or `Get-FileHash -Algorithm SHA256` in PowerShell.
 
-### Homebrew (after publishing)
+### Homebrew
 
 ```sh
 brew install karimz1/tap/grip
@@ -60,7 +60,7 @@ brew install karimz1/tap/grip
 
 Use the fully qualified name: Homebrew already has an unrelated package called `grip`.
 The [shared tap](https://github.com/karimz1/homebrew-tap) can hold additional tools.
-Private development installation and release setup are described in [Releasing](docs/releasing.md).
+Release automation and publishing details are described in [Releasing](docs/releasing.md).
 
 ## Controls
 
@@ -96,25 +96,6 @@ are still included in the bulk confirmation.
 | macOS | Native `libproc`: vnode descriptors, CWD, executable, mapped files | `SIGTERM`, after start-time validation |
 | Windows | Native Restart Manager resource correlation and Toolhelp loaded modules/executables | `WM_CLOSE` to process windows; console/service processes may require an explicit force kill |
 
-CI runs unit tests and real child-process integration tests on each supported OS and
-architecture. A cross-compile alone does not qualify a build for release: all seven
-matrix jobs must pass before the release workflow creates a draft.
-
-An observed open file is **not proof of a lock**. Windows Restart Manager does not expose
-read/write access or distinguish a handle from a lock; those rows say `unknown`.
-Windows CWD, directory-only handles, deleted files and some protected processes are not
-visible. Directory correlation scans up to 10,000 files and reports a warning at the limit;
-narrow the target for larger trees. Symlinked subdirectories are not recursively followed.
-
-Permissions, sandboxing, and processes exiting during a scan can hide information on any
-OS. Results are best-effort snapshots. Linux skips other mount namespaces; run `grip`
-inside the relevant container. Linux termination requires kernel 5.3 or newer. macOS
-start-time validation reduces PID reuse risk but cannot make signal delivery atomic;
-protected mappings and deleted vnodes can be unavailable. macOS binaries are not
-Developer ID signed or notarized yet.
-
-`grip` never elevates privileges automatically. Normal shutdown is a request, not a
-guarantee that a process has exited; refresh to verify. Force kill can lose unsaved work.
 
 ## Development
 

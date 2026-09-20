@@ -1,7 +1,6 @@
 # Releases and the Homebrew tap
 
-Both `karimz1/grip` and `karimz1/homebrew-tap` stay private during development.
-No workflow changes repository visibility. The release workflow creates **drafts only**.
+The public release workflow creates **drafts only** for review before publishing.
 
 ## What CI tests
 
@@ -61,7 +60,7 @@ published releases, and allows updating an existing draft. Do not move a publish
 
 1. Review all seven green CI jobs and the draft artifacts.
 2. Decide whether to add Developer ID signing/notarization for macOS. It is not configured.
-3. Make the repositories public only when ready; update the README's private status.
+3. Verify the repository visibility, README status, and release metadata.
 4. Publish the reviewed draft in GitHub Releases.
 5. Run **Update grip** in `homebrew-tap`, or wait for its daily scheduled run.
 
@@ -69,27 +68,6 @@ The tap updater only follows stable **published** releases. It verifies the form
 all referenced archives against the release checksums, then commits just `Formula/grip.rb`.
 It leaves other tools' formulae untouched. The next `brew update` makes the new version
 available via `brew install karimz1/tap/grip` on Linux or macOS, Intel or ARM.
-
-## Private development and credentials
-
-The initial tap has a `--HEAD` formula using Git over SSH:
-
-```sh
-brew tap karimz1/tap git@github.com:karimz1/homebrew-tap.git
-brew install --HEAD karimz1/tap/grip
-```
-
-This requires your SSH key to have access to both private repositories and Go 1.26+.
-No release hashes are invented before a release exists. Once the first stable release
-is published, the updater replaces the HEAD-only formula with the verified binary formula.
-The unrelated Homebrew-core `grip` package conflicts with this executable.
-
-The tap's workflow token can write only to the tap. Once `grip` is public, the updater
-needs no cross-repository token. While `grip` is private, optionally create a fine-grained
-read-only Contents token for `karimz1/grip` and save it as `GRIP_RELEASE_TOKEN` in the tap's
-Actions secrets to read private published release metadata. Private binary URLs still
-require authenticated downloads; public `brew install` becomes usable only after publishing.
-Do not place a token in a formula, repository, release artifact, or URL.
 
 ## Backend API references
 
