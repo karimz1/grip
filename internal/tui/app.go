@@ -40,6 +40,7 @@ type App struct {
 	ctx                             context.Context
 	backend                         scanner.Scanner
 	target                          model.Target
+	version                         string
 	width, height                   int
 	result                          model.Result
 	visible                         []model.Process
@@ -65,7 +66,7 @@ type App struct {
 
 const autoRefreshInterval = 5 * time.Second
 
-func New(ctx context.Context, backend scanner.Scanner, target model.Target) *App {
+func New(ctx context.Context, backend scanner.Scanner, target model.Target, version string) *App {
 	input := textinput.New()
 	input.Placeholder = "PID, process, user, path or access…"
 	input.Prompt = "/ "
@@ -76,7 +77,7 @@ func New(ctx context.Context, backend scanner.Scanner, target model.Target) *App
 	detailInput.Prompt = "/ "
 	detailInput.CharLimit = 256
 	detailInput.SetWidth(60)
-	return &App{ctx: ctx, backend: backend, target: target, width: 80, height: 24, selected: make(map[string]bool), filter: input, detailFilter: detailInput, usageTable: newUsageTable()}
+	return &App{ctx: ctx, backend: backend, target: target, version: version, width: 80, height: 24, selected: make(map[string]bool), filter: input, detailFilter: detailInput, usageTable: newUsageTable()}
 }
 
 func (a *App) Init() tea.Cmd { return tea.Batch(a.startScan(), pulse()) }

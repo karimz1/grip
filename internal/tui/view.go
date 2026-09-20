@@ -21,7 +21,10 @@ func (a *App) View() tea.View {
 	if a.stopping {
 		activity = "  requesting termination…"
 	}
-	lines := []string{brand.Render("grip") + "  " + muted.Render("see what's using your files") + accent.Render(activity), accent.Render(cell(a.target.Path, w)), muted.Render(strings.Repeat("─", w))}
+	title := brand.Render("grip") + "  " + muted.Render("see what's using your files") + accent.Render(activity)
+	version := muted.Render("v" + safe(a.version))
+	source := muted.Render("Source: https://github.com/karimz1/grip")
+	lines := []string{headerLine(title, version, w), headerLine(accent.Render(safe(a.target.Path)), source, w), muted.Render(strings.Repeat("─", w))}
 	var content []string
 	switch a.screen {
 	case confirmScreen:
@@ -86,6 +89,16 @@ func (a *App) View() tea.View {
 	v := tea.NewView(strings.Join(lines, "\n"))
 	v.AltScreen = true
 	return v
+}
+
+func headerLine(left, right string, width int) string {
+	if ansi.StringWidth(right) >= width {
+		return ansi.Truncate(right, width, "…")
+	}
+	left = ansi.Truncate(left, max(1, width-ansi.StringWidth(right)-1), "…")
+	leftWidth := ansi.StringWidth(left)
+	rightWidth := ansi.StringWidth(right)
+	return left + strings.Repeat(" ", width-leftWidth-rightWidth) + right
 }
 
 func (a *App) listView(w int) []string {
@@ -218,5 +231,5 @@ func (a *App) footer() []string {
 }
 
 func helpView() []string {
-	return []string{accent.Render("A LITTLE GRIP GOES A LONG WAY"), "", "↑ / ↓, j      Navigate processes", "PgUp / PgDn    Move one page", "Home / End     First / last process", "Enter          Inspect all matching paths", "Space          Toggle process selection", "/              Fuzzy filter (PID, name, user, path, access)", "Esc            Clear filter / back / cancel", "r              Refresh; cancels the previous scan", "a              Toggle five-second auto-refresh", "k              Request termination of current process", "x              Force kill current process", "K / X          Selected processes; if none, all filtered processes", "Tab            Choose Cancel / Terminate in confirmation", "?              Show this help", "q / Ctrl+C     Quit", "", warning.Render("Every termination requires confirmation. Cancel is the default."), "Selections survive filtering; bulk confirmation includes every target.", "Process identities are revalidated before any termination.", "", accent.Render("READING THE EVIDENCE"), "open           An observed file descriptor", "cwd            The current working directory", "executable     The process executable", "mapped         A mapped file or loaded module", "restart manager  Windows reports an application using a resource", "unknown        The OS does not expose this information", "", "A file being open does not prove it is locked.", "Permission restrictions and races can make results incomplete."}
+	return []string{accent.Render("A LITTLE GRIP GOES A LONG WAY"), muted.Render("Source: https://github.com/karimz1/grip"), "", "↑ / ↓, j      Navigate processes", "PgUp / PgDn    Move one page", "Home / End     First / last process", "Enter          Inspect all matching paths", "Space          Toggle process selection", "/              Fuzzy filter (PID, name, user, path, access)", "Esc            Clear filter / back / cancel", "r              Refresh; cancels the previous scan", "a              Toggle five-second auto-refresh", "k              Request termination of current process", "x              Force kill current process", "K / X          Selected processes; if none, all filtered processes", "Tab            Choose Cancel / Terminate in confirmation", "?              Show this help", "q / Ctrl+C     Quit", "", warning.Render("Every termination requires confirmation. Cancel is the default."), "Selections survive filtering; bulk confirmation includes every target.", "Process identities are revalidated before any termination.", "", accent.Render("READING THE EVIDENCE"), "open           An observed file descriptor", "cwd            The current working directory", "executable     The process executable", "mapped         A mapped file or loaded module", "restart manager  Windows reports an application using a resource", "unknown        The OS does not expose this information", "", "A file being open does not prove it is locked.", "Permission restrictions and races can make results incomplete."}
 }

@@ -3,16 +3,17 @@ package tui
 import (
 	"context"
 	"fmt"
-	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/karimz1/grip/internal/model"
 )
 
 func searchApp() *App {
-	a := New(context.Background(), nil, model.Target{Path: "/build"})
+	a := New(context.Background(), nil, model.Target{Path: "/build"}, "dev")
 	a.result.Processes = []model.Process{{
 		Identity: model.Identity{PID: 42, Started: "123"}, Name: "test-app",
 		Usages: []model.Usage{

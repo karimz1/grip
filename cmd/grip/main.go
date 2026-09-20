@@ -1,16 +1,17 @@
 package main
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"os"
+
+	tea "charm.land/bubbletea/v2"
 	"github.com/karimz1/grip/internal/model"
 	"github.com/karimz1/grip/internal/scanner"
 	"github.com/karimz1/grip/internal/tui"
 	"golang.org/x/term"
-	"io"
-	"os"
 )
 
 var version = "dev"
@@ -20,7 +21,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	showVersion := flags.Bool("version", false, "print version")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "grip — see what's using your files.\n\nUsage: grip [PATH]\n\n  grip .\n  grip ./build\n  grip ./foo.dll\n\nNo PATH means the current directory.\n\nOptions:")
+		fmt.Fprintln(stderr, "grip — see what's using your files.\nSource: https://github.com/karimz1/grip\n\nUsage: grip [PATH]\n\n  grip .\n  grip ./build\n  grip ./foo.dll\n\nNo PATH means the current directory.\n\nOptions:")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -57,7 +58,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if _, err := tea.NewProgram(tui.New(ctx, backend, target), tea.WithContext(ctx)).Run(); err != nil {
+	if _, err := tea.NewProgram(tui.New(ctx, backend, target, version), tea.WithContext(ctx)).Run(); err != nil {
 		fmt.Fprintln(stderr, "grip:", err)
 		return 1
 	}
