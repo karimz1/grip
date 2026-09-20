@@ -1,11 +1,12 @@
 package tui
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"fmt"
-	"github.com/charmbracelet/x/ansi"
 	"path/filepath"
 	"strings"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func (a *App) View() tea.View {
@@ -206,12 +207,12 @@ func (a *App) footer() []string {
 		return []string{accent.Render("↑↓ scroll   Esc back")}
 	default:
 		if a.width < 65 {
-			return []string{accent.Render("↑↓ move  Enter inspect  Space select"), accent.Render("k stop  x force  K/X bulk  / filter  r ↻  ?  q")}
+			return []string{accent.Render("↑↓ move  Enter inspect  Space select"), accent.Render("k stop  x force  K/X bulk  / filter  r refresh  a auto  ?  q")}
 		}
-		return []string{accent.Render("↑↓ navigate  Enter inspect  Space select  / filter"), accent.Render("k terminate  x force  K/X bulk  r refresh  ? help  q quit")}
+		return []string{accent.Render("↑↓ navigate  Enter inspect  Space select  / filter"), accent.Render("k terminate  x force  K/X bulk  r refresh  a auto  ? help  q quit")}
 	}
 }
 
 func helpView() []string {
-	return []string{accent.Render("A LITTLE GRIP GOES A LONG WAY"), "", "↑ / ↓, j      Navigate processes", "PgUp / PgDn    Move one page", "Home / End     First / last process", "Enter          Inspect all matching paths", "Space          Toggle process selection", "/              Fuzzy filter (PID, name, user, path, access)", "Esc            Clear filter / back / cancel", "r              Refresh; cancels the previous scan", "k              Request termination of current process", "x              Force kill current process", "K / X          Selected processes; if none, all filtered processes", "Tab            Choose Cancel / Terminate in confirmation", "?              Show this help", "q / Ctrl+C     Quit", "", warning.Render("Every termination requires confirmation. Cancel is the default."), "Selections survive filtering; bulk confirmation includes every target.", "Process identities are revalidated before any termination.", "", accent.Render("READING THE EVIDENCE"), "open           An observed file descriptor", "cwd            The current working directory", "executable     The process executable", "mapped         A mapped file or loaded module", "restart manager  Windows reports an application using a resource", "unknown        The OS does not expose this information", "", "A file being open does not prove it is locked.", "Permission restrictions and races can make results incomplete."}
+	return []string{accent.Render("A LITTLE GRIP GOES A LONG WAY"), "", "↑ / ↓, j      Navigate processes", "PgUp / PgDn    Move one page", "Home / End     First / last process", "Enter          Inspect all matching paths", "Space          Toggle process selection", "/              Fuzzy filter (PID, name, user, path, access)", "Esc            Clear filter / back / cancel", "r              Refresh; cancels the previous scan", "a              Toggle five-second auto-refresh", "k              Request termination of current process", "x              Force kill current process", "K / X          Selected processes; if none, all filtered processes", "Tab            Choose Cancel / Terminate in confirmation", "?              Show this help", "q / Ctrl+C     Quit", "", warning.Render("Every termination requires confirmation. Cancel is the default."), "Selections survive filtering; bulk confirmation includes every target.", "Process identities are revalidated before any termination.", "", accent.Render("READING THE EVIDENCE"), "open           An observed file descriptor", "cwd            The current working directory", "executable     The process executable", "mapped         A mapped file or loaded module", "restart manager  Windows reports an application using a resource", "unknown        The OS does not expose this information", "", "A file being open does not prove it is locked.", "Permission restrictions and races can make results incomplete."}
 }

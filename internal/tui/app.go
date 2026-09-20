@@ -1,15 +1,16 @@
 package tui
 
 import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"context"
-	"fmt"
 	"github.com/karimz1/grip/internal/model"
 	"github.com/karimz1/grip/internal/scanner"
-	"strings"
-	"time"
 )
 
 type screen int
@@ -27,37 +28,40 @@ type scanMsg struct {
 	err        error
 }
 type pulseMsg struct{}
+type refreshMsg struct{}
 type killMsg struct {
 	sent     int
 	failures []string
 }
 
 type App struct {
-	ctx                context.Context
-	backend            scanner.Scanner
-	target             model.Target
-	width, height      int
-	result             model.Result
-	visible            []model.Process
-	selected           map[string]bool
-	cursor, offset     int
-	screen             screen
-	filter             textinput.Model
-	detailFilter       textinput.Model
-	usageTable         table.Model
-	usageRows          []model.Usage
-	pathOffset         int
-	filtering          bool
-	filterBefore       string
-	scanning, stopping bool
-	generation, pulse  int
-	cancelScan         context.CancelFunc
-	status             string
-	statusError        bool
-	detail             *model.Process
-	pending            []model.Process
-	force, confirm     bool
+	ctx                             context.Context
+	backend                         scanner.Scanner
+	target                          model.Target
+	width, height                   int
+	result                          model.Result
+	visible                         []model.Process
+	selected                        map[string]bool
+	cursor, offset                  int
+	screen                          screen
+	filter                          textinput.Model
+	detailFilter                    textinput.Model
+	usageTable                      table.Model
+	usageRows                       []model.Usage
+	pathOffset                      int
+	filtering                       bool
+	filterBefore                    string
+	scanning, stopping, autoRefresh bool
+	generation, pulse               int
+	cancelScan                      context.CancelFunc
+	status                          string
+	statusError                     bool
+	detail                          *model.Process
+	pending                         []model.Process
+	force, confirm                  bool
 }
+
+const autoRefreshInterval = 5 * time.Second
 
 func New(ctx context.Context, backend scanner.Scanner, target model.Target) *App {
 	input := textinput.New()
@@ -76,6 +80,9 @@ func New(ctx context.Context, backend scanner.Scanner, target model.Target) *App
 func (a *App) Init() tea.Cmd { return tea.Batch(a.startScan(), pulse()) }
 func pulse() tea.Cmd {
 	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return pulseMsg{} })
+}
+func autoRefreshTick() tea.Cmd {
+	return tea.Tick(autoRefreshInterval, func(time.Time) tea.Msg { return refreshMsg{} })
 }
 
 func (a *App) startScan() tea.Cmd {
@@ -102,6 +109,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pulseMsg:
 		a.pulse = (a.pulse + 1) % 4
 		return a, pulse()
+	case refreshMsg:
+		if !a.autoRefresh {
+			return a, nil
+		}
+		if a.scanning {
+			return a, autoRefreshTick()
+		}
+		return a, tea.Batch(a.startScan(), autoRefreshTick())
 	case scanMsg:
 		if msg.generation != a.generation {
 			return a, nil
@@ -136,11 +151,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case killMsg:
 		a.stopping = false
 		a.statusError = len(msg.failures) > 0
-		a.status = fmt.Sprintf("Termination requested for %d processes. Refresh to verify exit.", msg.sent)
+		a.status = fmt.Sprintf("Termination requested for %d processes. Refreshing…", msg.sent)
 		if len(msg.failures) > 0 {
 			a.status += fmt.Sprintf(" %d failed: %s", len(msg.failures), strings.Join(msg.failures, "; "))
 		}
-		return a, a.startScan()
+		if msg.sent == 0 {
+			return a, nil
+		}
+		return a, tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return refreshMsg{} })
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			if a.cancelScan != nil {
@@ -199,6 +217,15 @@ func (a *App) updateMain(key string) tea.Cmd {
 		if a.cancelScan != nil {
 			a.cancelScan()
 		}
+	case "a":
+		a.autoRefresh = !a.autoRefresh
+		if a.autoRefresh {
+			a.status = "Auto-refresh enabled (every 5s)."
+			a.statusError = false
+			return autoRefreshTick()
+		}
+		a.status = "Auto-refresh disabled."
+		a.statusError = false
 		return tea.Quit
 	case "up":
 		a.cursor = max(0, a.cursor-1)

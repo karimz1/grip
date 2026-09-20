@@ -1,6 +1,9 @@
 # grip
 
-**Beta**
+grip is a cross-platform terminal UI for finding which processes are using your files,
+directories, DLLs, and other open file handles. It can also request graceful shutdowns
+or force-kill selected processes. The project is in beta, but I already use it myself;
+feel free to try it and share your feedback.
 
 **See what's using your files.**
 
@@ -26,11 +29,41 @@ No argument means the current directory. An interactive terminal is required.
 
 ## Install
 
-This project is in beta. Install from a published release or build from source.
+### Homebrew (recommended for Linux and macOS)
 
-### From source
+```sh
+brew install karimz1/tap/grip
+```
 
-Requires Go 1.26 or newer. The resulting binary has no external runtime requirements.
+Homebrew manages the installation and updates. To update grip later, run:
+
+```sh
+brew upgrade grip
+```
+
+Use the fully qualified name because Homebrew already has an unrelated package called `grip`.
+The [shared tap](https://github.com/karimz1/homebrew-tap) can hold additional tools.
+
+### Windows and prebuilt release binaries
+
+On Windows, download the latest archive from [Releases](https://github.com/karimz1/grip/releases).
+Extract `grip.exe` and place it on your `PATH`. Prebuilt archives are also available for
+Linux and macOS:
+
+| OS | Architectures | Archive |
+| --- | --- | --- |
+| Linux | x86-64, ARM64 | `.tar.gz` |
+| macOS | Intel, Apple Silicon | `.tar.gz` |
+| Windows | x86-64, ARM64, x86 (32-bit) | `.zip` |
+
+Each release includes `checksums.txt`;
+compare the download's SHA-256 before installing. Use `sha256sum` on Linux,
+`shasum -a 256` on macOS, or `Get-FileHash -Algorithm SHA256` in PowerShell.
+
+### Build from source
+
+Build from source if you are developing grip or need a custom build. You need Go 1.26
+or newer, and you will need to build and update the binary yourself.
 
 ```sh
 go build -o bin/grip ./cmd/grip
@@ -39,30 +72,8 @@ go build -o bin/grip ./cmd/grip
 
 On Windows use `go build -o bin/grip.exe ./cmd/grip` and `./bin/grip.exe .`.
 
-### Release binaries
-
-The release pipeline produces executables and archives for these targets:
-
-| OS | Architectures | Archive |
-| --- | --- | --- |
-| Linux | x86-64, ARM64 | `.tar.gz` |
-| macOS | Intel, Apple Silicon | `.tar.gz` |
-| Windows | x86-64, ARM64, x86 (32-bit) | `.zip` |
-
-Download from [Releases](https://github.com/karimz1/grip/releases), extract the archive,
-and put `grip` (or `grip.exe`) on your `PATH`. Each release includes `checksums.txt`;
-compare the download's SHA-256 before installing. Use `sha256sum` on Linux,
-`shasum -a 256` on macOS, or `Get-FileHash -Algorithm SHA256` in PowerShell.
-
-### Homebrew
-
-```sh
-brew install karimz1/tap/grip
-```
-
-Use the fully qualified name: Homebrew already has an unrelated package called `grip`.
-The [shared tap](https://github.com/karimz1/homebrew-tap) can hold additional tools.
-Release automation and publishing details are described in [Releasing](docs/releasing.md).
+Release automation and contributor setup are documented in [Releasing](docs/releasing.md)
+and [Development](docs/development.md).
 
 ## Controls
 
@@ -98,21 +109,6 @@ are still included in the bulk confirmation.
 | macOS | Native `libproc`: vnode descriptors, CWD, executable, mapped files | `SIGTERM`, after start-time validation |
 | Windows | Native Restart Manager resource correlation and Toolhelp loaded modules/executables | `WM_CLOSE` to process windows; console/service processes may require an explicit force kill |
 
-
-## Development
-
-```sh
-go test ./...
-go test -race ./...    # where the Go race detector is supported
-go vet ./...
-python3 -m unittest discover -s scripts -p 'test_*.py'
-```
-
-The UI depends only on the scanner interface. Platform backends stay in
-`internal/scanner`; path and usage models live in `internal/model`.
-Python is used only for release tooling, never by the installed application.
-
-See [Releasing](docs/releasing.md) for the CI matrix, tag workflow, checksums, and tap updates.
 
 ## License
 
