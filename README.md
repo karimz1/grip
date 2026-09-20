@@ -11,7 +11,7 @@ A terminal UI for finding and stopping processes that are using files and direct
 Find the DLL a process loaded, the file a build tool left open, or the working directory
 a shell is holding—all from one place.
 
-[![asciicast](https://asciinema.org/a/1265850.svg)](https://asciinema.org/a/1265850)
+[![asciicast](https://asciinema.org/a/1265853.svg)](https://asciinema.org/a/1265853)
 
 ```sh
 grip .
