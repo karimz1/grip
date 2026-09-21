@@ -8,6 +8,8 @@ directories, DLLs, and other open file handles.
 Inspect why a process matched, search its usage, and request a graceful shutdown or
 force kill from the same interface.
 
+Demo of the earlier `grip` interface (before the rename and visual refresh):
+
 [![asciicast](https://asciinema.org/a/1265853.svg)](https://asciinema.org/a/1265853)
 
 ```sh
@@ -28,7 +30,10 @@ With no argument, oflh uses the current directory.
 
 ### Homebrew
 
-Recommended on Linux and macOS:
+Previously named **grip**. The command is now `oflh`. Until the first renamed
+stable release is published, use `brew install --HEAD karimz1/tap/oflh`.
+
+After the first renamed stable release, install on Linux or macOS with:
 
 ```sh
 brew install karimz1/tap/oflh
@@ -39,9 +44,6 @@ Update later with:
 ```sh
 brew upgrade oflh
 ```
-
-Previously named **grip**. The command is now `oflh`. Until the first renamed
-stable release is published, use `brew install --HEAD karimz1/tap/oflh`.
 
 ### Windows and release binaries
 
