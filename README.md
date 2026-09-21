@@ -8,13 +8,23 @@ directories, DLLs, and other open file handles.
 Inspect why a process matched, search its usage, and request a graceful shutdown or
 force kill from the same interface.
 
-Demo of the earlier `grip` interface (before the rename and visual refresh):
+<p>
+<a href="https://buymeacoffee.com/karimz1">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="41" />
+</a>
+</p>
 
-[![asciicast](https://asciinema.org/a/1265853.svg)](https://asciinema.org/a/1265853)
+## Demo:
+
+<a href="images/demo.gif">
+    <img src="images/demo.gif" alt="dupster tui demo" width="100%">
+</a>
+
 
 ```sh
 oflh .
 ```
+
 
 Point oflh at a directory to inspect its descendants, or at a specific file:
 
@@ -161,6 +171,10 @@ If oflh misses a process, behaves unexpectedly, or something in the UI is unclea
 [open an issue](https://github.com/karimz1/open-file-lock-handle/issues).
 
 If you find oflh useful, a GitHub star is appreciated.
+
+## Does the tool have a new name ?
+
+Yes. During early beta, the tool was named grip. However, starting with v0.0.5, it was officially renamed to Open File Lock Handle (oflh). So older release have the old name.
 
 ## License
 
