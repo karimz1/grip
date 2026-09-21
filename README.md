@@ -38,12 +38,9 @@ With no argument, oflh uses the current directory.
 
 ## Install
 
-### Homebrew
+### Homebrew (recommended)
 
-Previously named **grip**. The command is now `oflh`. Until the first renamed
-stable release is published, use `brew install --HEAD karimz1/tap/oflh`.
-
-After the first renamed stable release, install on Linux or macOS with:
+for Linux or macOS install use brew it is recommended so you get auto updates easily:
 
 ```sh
 brew install karimz1/tap/oflh
