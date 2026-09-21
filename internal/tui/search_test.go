@@ -157,3 +157,97 @@ func TestUsageTableLongPathPreview(t *testing.T) {
 		t.Fatal("empty results must not retain a selected usage")
 	}
 }
+
+func TestWildcardSearchInMainAndDetails(t *testing.T) {
+	a := searchApp()
+	a.updateDetails("esc")
+	a.filter.SetValue("")
+	a.refilter()
+	view := ansi.Strip(a.View().Content)
+	if !strings.Contains(view, "╭") || !strings.Contains(view, "/ Search PID") {
+		t.Fatalf("startup search box missing: %s", view)
+	}
+	a.updateMain("/")
+	typeSearch(a, "eng*dll")
+	if len(a.visible) != 1 {
+		t.Fatal("main wildcard should match usage")
+	}
+	a.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	a.updateMain("enter")
+	if a.detailFilter.Value() != "eng*dll" {
+		t.Fatal("main wildcard was not inherited")
+	}
+	a.updateDetails("/")
+	if len(a.usageRows) != 1 || !strings.Contains(a.usageRows[0].Path, "Engine.dll") {
+		t.Fatal("details wildcard did not match")
+	}
+	typeSearch(a, "*absent")
+	if len(a.usageRows) != 0 || !strings.Contains(ansi.Strip(a.View().Content), "No usage entries") {
+		t.Fatal("missing wildcard empty state")
+	}
+	a.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	a.updateDetails("q")
+	a.updateMain("/")
+	typeSearch(a, "*absent")
+	if len(a.visible) != 0 {
+		t.Fatal("main wildcard should show no matches")
+	}
+	a.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if a.filter.Value() != "eng*dll" || len(a.visible) != 1 {
+		t.Fatal("cancel should restore previous search")
+	}
+}
+
+func TestMainSearchCountsAndInheritedFileTerms(t *testing.T) {
+	a := searchApp()
+	a.updateDetails("q")
+	p := &a.result.Processes[0]
+	p.Usages = []model.Usage{{Path: "/build/aws-core.dll"}, {Path: "/build/aws-s3.dll"}, {Path: "/build/other.dll"}}
+	a.filter.SetValue("42 aws*dll")
+	a.refilter()
+	if len(a.visible) != 1 || len(a.visible[0].Usages) != 2 {
+		t.Fatal("main should retain only the matching usages")
+	}
+	if !strings.Contains(ansi.Strip(a.View().Content), "+1") {
+		t.Fatal("+ count must reflect filtered usages")
+	}
+	a.updateMain("enter")
+	if a.detailFilter.Value() != "aws*dll" || len(a.usageRows) != 2 || len(a.detail.Usages) != 3 {
+		t.Fatal("details must inherit file terms and retain original usages")
+	}
+	a.updateDetails("esc")
+	if len(a.usageRows) != 3 {
+		t.Fatal("clearing details search must restore all usages")
+	}
+	a.updateDetails("esc")
+	if a.filter.Value() != "42 aws*dll" {
+		t.Fatal("details clear changed main filter")
+	}
+}
+
+func TestLongFilenameUsesAvailableWidth(t *testing.T) {
+	a := searchApp()
+	name := "Microsoft.IdentityModel.JsonWebTokens.dll"
+	a.detail.Usages = []model.Usage{{Path: "/build/" + name, Relation: "mapped", Access: "read"}}
+	a.Update(tea.WindowSizeMsg{Width: 170, Height: 36})
+	if a.usageTable.Columns()[0].Width < ansi.StringWidth(name) {
+		t.Fatal("file column wastes available space")
+	}
+	view := ansi.Strip(a.View().Content)
+	if strings.Count(view, name) < 3 {
+		t.Fatalf("filename should appear in table, filename preview and full path: %s", view)
+	}
+	a.detail.Usages[0].Path = "/build/" + strings.Repeat("LongName", 30) + ".dll"
+	for _, size := range []struct{ w, h int }{{28, 18}, {48, 20}, {80, 22}, {120, 24}} {
+		a.Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
+		view = ansi.Strip(a.View().Content)
+		if len(strings.Split(view, "\n")) > size.h {
+			t.Fatalf("path preview overflows at %dx%d: %s", size.w, size.h, view)
+		}
+		for _, line := range strings.Split(view, "\n") {
+			if ansi.StringWidth(line) > size.w {
+				t.Fatal("width overflow")
+			}
+		}
+	}
+}

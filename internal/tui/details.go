@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/table"
@@ -15,15 +16,16 @@ var frame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForegroun
 
 func newUsageTable() table.Model {
 	styles := table.DefaultStyles()
-	styles.Header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).Padding(0, 1).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("8"))
+	styles.Header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#A78BFA")).Padding(0, 1).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("8"))
 	styles.Cell = lipgloss.NewStyle().Padding(0, 1)
-	styles.Selected = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("6")).Bold(true)
+	styles.Selected = selectedStyle
 	return table.New(table.WithStyles(styles), table.WithFocused(true))
 }
 
-func usageColumns(w int) []table.Column {
+func usageColumns(w int, longestName int) []table.Column {
 	if w >= 90 {
-		return []table.Column{{Title: "FILE", Width: 26}, {Title: "RELATION", Width: 12}, {Title: "ACCESS", Width: 12}, {Title: "DIRECTORY", Width: w - 58}}
+		fileWidth := min(max(26, longestName), w-56)
+		return []table.Column{{Title: "FILE", Width: fileWidth}, {Title: "RELATION", Width: 12}, {Title: "ACCESS", Width: 12}, {Title: "DIRECTORY", Width: w - fileWidth - 32}}
 	}
 	if w >= 56 {
 		return []table.Column{{Title: "FILE", Width: w - 30}, {Title: "RELATION", Width: 12}, {Title: "ACCESS", Width: 12}}
@@ -39,22 +41,39 @@ func (a *App) rebuildUsages(reset bool) {
 		return
 	}
 	cursor := a.usageTable.Cursor()
-	columns := usageColumns(max(1, a.width-6))
+	longestName := 0
+	for _, u := range a.detail.Usages {
+		if (!a.detailLocksOnly || u.Lock != "") && u.MatchesFilter(a.detailFilter.Value()) {
+			name := safe(filepath.Base(u.Path))
+			if u.Deleted {
+				name += " (deleted)"
+			}
+			longestName = max(longestName, ansi.StringWidth(name))
+		}
+	}
+	columns := usageColumns(max(1, a.width-6), longestName)
 	// Clear old rows before changing the column count on resize.
 	a.usageTable.SetRows(nil)
 	a.usageTable.SetColumns(columns)
 	a.usageRows = nil
 	rows := []table.Row{}
 	for _, u := range a.detail.Usages {
-		if !u.MatchesFilter(a.detailFilter.Value()) {
+		if (a.detailLocksOnly && u.Lock == "") || !u.MatchesFilter(a.detailFilter.Value()) {
 			continue
 		}
 		a.usageRows = append(a.usageRows, u)
+	}
+	if a.detailFilter.Value() != "" {
+		sort.SliceStable(a.usageRows, func(i, j int) bool {
+			return a.usageRows[i].SearchScore(a.detailFilter.Value()) > a.usageRows[j].SearchScore(a.detailFilter.Value())
+		})
+	}
+	for _, u := range a.usageRows {
 		name := filepath.Base(u.Path)
 		if u.Deleted {
 			name += " (deleted)"
 		}
-		row := table.Row{safe(name), safe(u.Relation), safe(u.Access), safe(filepath.Dir(u.Path))}
+		row := table.Row{safe(name), evidenceStyle(u.Relation).Render(safe(u.Relation)), evidenceStyle(u.Access).Render(safe(u.Access)), safe(filepath.Dir(u.Path))}
 		rows = append(rows, row[:len(columns)])
 	}
 	a.usageTable.SetRows(rows)
@@ -84,23 +103,49 @@ func (a *App) detailsPage() tea.View {
 		muted.Render("EXE  ") + cell(present(p.Executable), w-5),
 		muted.Render("CWD  ") + cell(present(p.CWD), w-5),
 	}
-	search := muted.Render("/ Search files, DLLs, paths…")
-	searchStyle := frame
-	if a.filtering {
-		search = a.detailFilter.View()
-		searchStyle = searchStyle.BorderForeground(lipgloss.Color("6"))
-	} else if a.detailFilter.Value() != "" {
-		search = accent.Render("/ ") + safe(a.detailFilter.Value()) + muted.Render("  · Esc clears")
+	if a.height >= 22 {
+		parent := "unavailable"
+		if p.ParentPID > 0 {
+			parent = fmt.Sprintf("PID %d", p.ParentPID)
+		}
+		if len(p.Ancestors) > 0 {
+			parent = fmt.Sprintf("%s (%d)", safe(p.Ancestors[0].Name), p.Ancestors[0].PID)
+		}
+		lines = append(lines, muted.Render("PARENT ")+parent, muted.Render("CPU ")+cpuText(*p)+muted.Render(" machine · RAM ")+memoryText(*p)+muted.Render(" RSS"))
 	}
-	lines = append(lines, strings.Split(searchStyle.Width(w).Render(ansi.Truncate(search, w-2, "…")), "\n")...)
+	lines = append(lines, a.searchBox(w, "/ Search files, DLLs, paths… · * wildcard")...)
 	position := 0
 	if len(a.usageRows) > 0 {
 		position = a.usageTable.Cursor() + 1
 	}
 	count := fmt.Sprintf("%d of %d usages", len(a.usageRows), len(p.Usages))
+	lockedPaths := make(map[string]bool)
+	for _, u := range a.usageRows {
+		if u.Lock != "" {
+			lockedPaths[u.Path] = true
+		}
+	}
+	if a.result.LockDetection || len(lockedPaths) > 0 {
+		count += " · " + evidenceStyle("locked").Render(fmt.Sprintf("%d locked files", len(lockedPaths)))
+	}
+	if a.detailLocksOnly {
+		count = "LOCKS ONLY · " + count
+	}
 	positionText := fmt.Sprintf("%d / %d", position, len(a.usageRows))
-	lines = append(lines, accent.Render(count)+strings.Repeat(" ", max(1, w-ansi.StringWidth(count)-len(positionText)))+muted.Render(positionText))
+	lines = append(lines, headerLine(accent.Render(count), muted.Render(positionText), w))
 	footer := append([]string{muted.Render(strings.Repeat("─", w))}, a.footer()...)
+	if position > 0 && a.height >= 20 {
+		name := safe(filepath.Base(a.usageRows[position-1].Path))
+		parts := strings.Split(ansi.Hardwrap(name, max(1, w-5), true), "\n")
+		previewLines := min(2, len(parts), max(0, a.height-len(lines)-len(footer)-8))
+		for i, part := range parts[:previewLines] {
+			label := "     "
+			if i == 0 {
+				label = "FILE "
+			}
+			lines = append(lines, muted.Render(label)+part)
+		}
+	}
 	// Metadata, path preview and footer stay visible while the table scrolls.
 	tableHeight := max(1, a.height-len(lines)-len(footer)-5)
 	a.usageTable.SetWidth(w - 2)
@@ -111,6 +156,15 @@ func (a *App) detailsPage() tea.View {
 		if a.detailFilter.Value() == "" {
 			message = "No usage entries available."
 		}
+		if a.detailLocksOnly {
+			message = "No confirmed locks match your search. Press l for all usages."
+			if a.detailFilter.Value() == "" {
+				message = "No confirmed locks in this process snapshot. Press l for all usages."
+			}
+			if !a.result.LockDetection {
+				message = "Lock detection is unavailable on this platform. Press l for all usages."
+			}
+		}
 		tableView = lipgloss.NewStyle().Width(w - 2).Height(tableHeight).Render(muted.Render(ansi.Hardwrap(message, w-2, true)))
 	}
 	lines = append(lines, strings.Split(frame.Render(tableView), "\n")...)
@@ -118,6 +172,9 @@ func (a *App) detailsPage() tea.View {
 	if position > 0 {
 		u := a.usageRows[position-1]
 		path := safe(u.Path)
+		if u.Lock != "" {
+			path += " · " + safe(u.Lock)
+		}
 		if u.Deleted {
 			path += " (deleted)"
 		}
@@ -139,4 +196,18 @@ func (a *App) detailsPage() tea.View {
 	v := tea.NewView(strings.Join(lines, "\n"))
 	v.AltScreen = true
 	return v
+}
+
+// searchBox is shared by the process, locked-file and usage views.
+func (a *App) searchBox(w int, placeholder string) []string {
+	input := a.activeFilter()
+	search := muted.Render(placeholder)
+	searchStyle := frame
+	if a.filtering {
+		search = input.View()
+		searchStyle = searchStyle.BorderForeground(lipgloss.Color("#A78BFA"))
+	} else if input.Value() != "" {
+		search = accent.Render("/ ") + safe(input.Value()) + muted.Render("  · Esc clears")
+	}
+	return strings.Split(searchStyle.Width(w).Render(ansi.Truncate(search, max(1, w-2), "…")), "\n")
 }

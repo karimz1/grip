@@ -8,12 +8,14 @@ import (
 )
 
 var (
-	accent        = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
+	accent        = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true)
 	muted         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	warning       = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	danger        = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
-	selectedStyle = lipgloss.NewStyle().Reverse(true)
-	brand         = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
+	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#6D28D9")).Bold(true)
+	brand         = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true)
+	tabInactive   = lipgloss.NewStyle().Foreground(lipgloss.Color("#B8B8CC")).Background(lipgloss.Color("#303040")).Padding(0, 2)
+	tabActive     = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#6D28D9")).Bold(true).Padding(0, 2)
 	success       = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 )
 
@@ -44,11 +46,15 @@ func present(s string) string {
 func evidenceStyle(value string) lipgloss.Style {
 	switch value {
 	case "read":
-		return success
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#9BC5A1"))
+	case "locked":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#E58C8C")).Bold(true)
 	case "write", "read/write", "deleted":
-		return warning
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#D9B77D"))
 	case "mapped", "executable", "execute":
 		return accent
+	case "cwd", "directory", "reference":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#9AAEC4"))
 	case "unknown", "unavailable":
 		return muted
 	default:

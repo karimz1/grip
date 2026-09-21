@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -47,8 +48,16 @@ type App struct {
 	selected                        map[string]bool
 	cursor, offset                  int
 	screen                          screen
+	lockedTab                       bool
+	hideInspector                   bool
+	ancestorSource                  *model.Process
+	ancestorCursor                  int
+	parentAction                    bool
+	cpuWarmupDone                   bool
+	sortBy                          string
 	filter                          textinput.Model
 	detailFilter                    textinput.Model
+	detailLocksOnly                 bool
 	usageTable                      table.Model
 	usageRows                       []model.Usage
 	pathOffset                      int
@@ -68,12 +77,12 @@ const autoRefreshInterval = 5 * time.Second
 
 func New(ctx context.Context, backend scanner.Scanner, target model.Target, version string) *App {
 	input := textinput.New()
-	input.Placeholder = "PID, process, user, path or access…"
+	input.Placeholder = "PID, process, path… (* wildcard)"
 	input.Prompt = "/ "
 	input.CharLimit = 256
 	input.SetWidth(60)
 	detailInput := textinput.New()
-	detailInput.Placeholder = "DLL name, path, relation or access…"
+	detailInput.Placeholder = "DLL, path, access… (* wildcard)"
 	detailInput.Prompt = "/ "
 	detailInput.CharLimit = 256
 	detailInput.SetWidth(60)
@@ -137,8 +146,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		var key string
+		var lockUsage model.Usage
 		if p := a.current(); p != nil {
 			key = p.Key()
+			if a.lockedTab {
+				lockUsage = p.Usages[0]
+			}
 		}
 		a.result = msg.result
 		alive := make(map[string]bool)
@@ -152,9 +165,28 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.refilter()
 		for i, p := range a.visible {
-			if p.Key() == key {
+			if p.Key() == key && (!a.lockedTab || p.Usages[0] == lockUsage) {
 				a.cursor = i
 				break
+			}
+		}
+		// Keep resource values fresh even when details were opened before the
+		// follow-up sample, without replacing the user's usage snapshot/search.
+		if a.detail != nil {
+			for _, p := range a.result.Processes {
+				if p.Identity == a.detail.Identity {
+					a.detail.CPUPercent, a.detail.CPUKnown = p.CPUPercent, p.CPUKnown
+					a.detail.MemoryBytes, a.detail.MemoryKnown = p.MemoryBytes, p.MemoryKnown
+					break
+				}
+			}
+		}
+		if !a.cpuWarmupDone {
+			for _, p := range a.result.Processes {
+				if p.MemoryKnown && !p.CPUKnown {
+					a.cpuWarmupDone = true
+					return a, tea.Tick(time.Second, func(time.Time) tea.Msg { return refreshMsg{} })
+				}
 			}
 		}
 	case killMsg:
@@ -207,10 +239,67 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a *App) refilter() {
 	a.visible = nil
 	for _, p := range a.result.Processes {
+		if a.lockedTab {
+			for _, u := range p.Usages {
+				if u.Lock == "" {
+					continue
+				}
+				row := p
+				row.Usages = []model.Usage{u}
+				if row.MatchesFilter(a.filter.Value()) {
+					a.visible = append(a.visible, row)
+				}
+			}
+			continue
+		}
 		if p.MatchesFilter(a.filter.Value()) {
+			query := usageQuery(p, a.filter.Value())
+			if query != "" {
+				usages := make([]model.Usage, 0, len(p.Usages))
+				for _, u := range p.Usages {
+					if u.MatchesFilter(query) {
+						usages = append(usages, u)
+					}
+				}
+				if len(usages) == 0 {
+					continue
+				}
+				p.Usages = usages
+			}
 			a.visible = append(a.visible, p)
 		}
 	}
+	sort.SliceStable(a.visible, func(i, j int) bool {
+		p, q := a.visible[i], a.visible[j]
+		switch a.sortBy {
+		case "":
+			if a.filter.Value() != "" {
+				left, right := p.SearchScore(a.filter.Value()), q.SearchScore(a.filter.Value())
+				if left != right {
+					return left > right
+				}
+			}
+		case "memory":
+			if p.MemoryKnown != q.MemoryKnown {
+				return p.MemoryKnown
+			}
+			if p.MemoryBytes != q.MemoryBytes {
+				return p.MemoryBytes > q.MemoryBytes
+			}
+		case "cpu":
+			if p.CPUKnown != q.CPUKnown {
+				return p.CPUKnown
+			}
+			if p.CPUPercent != q.CPUPercent {
+				return p.CPUPercent > q.CPUPercent
+			}
+		case "name":
+			if p.Name != q.Name {
+				return strings.ToLower(p.Name) < strings.ToLower(q.Name)
+			}
+		}
+		return p.PID < q.PID
+	})
 	a.cursor = min(max(0, a.cursor), max(0, len(a.visible)-1))
 }
 func (a *App) current() *model.Process {
@@ -221,7 +310,36 @@ func (a *App) current() *model.Process {
 }
 
 func (a *App) updateMain(key string) tea.Cmd {
+	if a.ancestorSource != nil {
+		return a.updateAncestry(key)
+	}
 	switch key {
+	case "right", "tab", "shift+tab":
+		if p := a.current(); p != nil {
+			if a.width < 120 || a.height < 22 {
+				a.status = "Enlarge the terminal to select an ancestor (120 columns, 22 rows)."
+				a.statusError = false
+				return nil
+			}
+			copy := *p
+			a.ancestorSource = &copy
+			a.ancestorCursor = -1
+			a.hideInspector = false
+		}
+	case "i":
+		a.hideInspector = !a.hideInspector
+	case "c", "m", "n", "p":
+		a.sortBy = map[string]string{"c": "cpu", "m": "memory", "n": "name", "p": "pid"}[key]
+		a.cursor = 0
+		a.refilter()
+	case "1", "2":
+		if key == "1" {
+			a.lockedTab = false
+		} else {
+			a.lockedTab = true
+		}
+		a.cursor = 0
+		a.refilter()
 	case "q":
 		if a.cancelScan != nil {
 			a.cancelScan()
@@ -248,6 +366,21 @@ func (a *App) updateMain(key string) tea.Cmd {
 		a.cursor = 0
 	case "end", "G":
 		a.cursor = max(0, len(a.visible)-1)
+	case "ctrl+a":
+		all := len(a.visible) > 0
+		for _, p := range a.visible {
+			if !a.selected[p.Key()] {
+				all = false
+				break
+			}
+		}
+		for _, p := range a.visible {
+			if all {
+				delete(a.selected, p.Key())
+			} else {
+				a.selected[p.Key()] = true
+			}
+		}
 	case "space":
 		if p := a.current(); p != nil {
 			if a.selected[p.Key()] {
@@ -259,8 +392,17 @@ func (a *App) updateMain(key string) tea.Cmd {
 	case "enter":
 		if p := a.current(); p != nil {
 			copy := *p
+			if !a.lockedTab {
+				for _, original := range a.result.Processes {
+					if original.Key() == p.Key() {
+						copy = original
+						break
+					}
+				}
+			}
 			a.detail = &copy
-			a.detailFilter.SetValue("")
+			a.detailLocksOnly = false
+			a.detailFilter.SetValue(usageQuery(copy, a.filter.Value()))
 			a.screen = detailScreen
 			a.offset = 0
 			a.rebuildUsages(true)
@@ -338,6 +480,9 @@ func (a *App) updateFilterInput(msg tea.Msg) tea.Cmd {
 
 func (a *App) updateDetails(key string) tea.Cmd {
 	switch key {
+	case "l":
+		a.detailLocksOnly = !a.detailLocksOnly
+		a.rebuildUsages(true)
 	case "/":
 		a.filterBefore = a.detailFilter.Value()
 		a.filtering = true
@@ -384,3 +529,18 @@ func (a *App) updateDetails(key string) tea.Cmd {
 }
 
 func (a *App) pageSize() int { return max(1, a.height-10-len(a.footer())) }
+
+// Carry file-related terms into details, leaving process-only terms (such as a
+// PID or username) in the process search where they belong.
+func usageQuery(p model.Process, query string) string {
+	var terms []string
+	for _, term := range strings.Fields(query) {
+		for _, u := range p.Usages {
+			if u.MatchesFilter(term) {
+				terms = append(terms, term)
+				break
+			}
+		}
+	}
+	return strings.Join(terms, " ")
+}

@@ -4,6 +4,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"fmt"
 	"github.com/karimz1/open-file-lock-handle/internal/model"
+	"os"
 )
 
 func (a *App) prepareKill(key string) {
@@ -11,11 +12,30 @@ func (a *App) prepareKill(key string) {
 		return
 	}
 	a.pending = nil
+	a.parentAction = false
 	a.force = key == "x" || key == "X"
 	a.confirm = false
 	a.offset = 0
-	if key == "K" || key == "X" {
-		for _, p := range a.result.Processes {
+	if a.screen == mainScreen && a.ancestorSource != nil {
+		target := a.treeTarget()
+		if target.Started == "" || target.PID <= 1 || target.PID == os.Getpid() {
+			a.status = "This ancestor cannot be terminated: protected process or identity unavailable."
+			a.statusError = true
+			return
+		}
+		a.pending = []model.Process{target}
+		a.parentAction = a.ancestorCursor >= 0
+	} else if key == "K" || key == "X" || (a.screen == mainScreen && len(a.selected) > 0) {
+		candidates := a.result.Processes
+		if len(a.selected) == 0 {
+			candidates = a.visible
+		}
+		seen := make(map[string]bool)
+		for _, p := range candidates {
+			if seen[p.Key()] {
+				continue
+			}
+			seen[p.Key()] = true
 			if len(a.selected) > 0 {
 				if a.selected[p.Key()] {
 					a.pending = append(a.pending, p)

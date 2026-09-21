@@ -14,10 +14,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
 
-type native struct{ root string }
+type native struct {
+	root     string
+	sampleMu sync.Mutex
+	samples  map[string]cpuSample
+}
 
 func New() (Scanner, error) { return &native{root: "/proc"}, nil }
 
@@ -39,7 +44,7 @@ func (s *native) identity(pid int) (model.Identity, error) {
 }
 
 func (s *native) Scan(ctx context.Context, target model.Target) (model.Result, error) {
-	result := model.Result{}
+	result := model.Result{LockDetection: true}
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
 		return result, fmt.Errorf("read proc: %w", err)
@@ -166,6 +171,13 @@ func (s *native) Scan(ctx context.Context, target model.Target) (model.Result, e
 				}
 			}
 			add(path, "open", access, ref)
+			for _, lock := range fdLocks(string(b)) {
+				before := len(p.Usages)
+				add(path, "locked", access, ref)
+				if len(p.Usages) > before {
+					p.Usages[len(p.Usages)-1].Lock = lock
+				}
+			}
 		}
 		maps, err := os.Open(filepath.Join(base, "maps"))
 		check(err)
@@ -240,6 +252,7 @@ func (s *native) Scan(ctx context.Context, target model.Target) (model.Result, e
 	if foreign > 0 {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("Skipped %d processes in other mount namespaces; run oflh inside their container.", foreign))
 	}
+	s.enrich(ctx, &result)
 	result.Normalize()
 	return result, nil
 }
@@ -272,4 +285,23 @@ func (s *native) Kill(ctx context.Context, id model.Identity, force bool) error 
 		return fmt.Errorf("signal PID %d: %w", id.PID, err)
 	}
 	return nil
+}
+
+// fdLocks accepts held kernel locks only, excluding blocked requests and leases.
+func fdLocks(info string) []string {
+	var locks []string
+	for _, line := range strings.Split(info, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 9 || f[0] != "lock:" {
+			continue
+		}
+		if f[2] != "FLOCK" && f[2] != "POSIX" && f[2] != "OFDLCK" {
+			continue
+		}
+		if f[4] != "READ" && f[4] != "WRITE" {
+			continue
+		}
+		locks = append(locks, fmt.Sprintf("%s %s %s bytes %s–%s", f[2], f[3], f[4], f[7], f[8]))
+	}
+	return locks
 }

@@ -115,3 +115,53 @@ func TestStaleScanCannotReplaceResults(t *testing.T) {
 		t.Fatal("stale scan overwrote results")
 	}
 }
+
+func TestSelectAllAndLowercaseKillSelection(t *testing.T) {
+	a := searchApp()
+	a.screen = mainScreen
+	a.filter.SetValue("")
+	a.result.Processes = append(a.result.Processes, model.Process{Identity: model.Identity{PID: 99, Started: "456"}, Name: "other", Usages: []model.Usage{{Path: "/build/other"}}})
+	a.refilter()
+	a.updateMain("ctrl+a")
+	if len(a.selected) != 2 {
+		t.Fatal("select all missing processes")
+	}
+	a.updateMain("k")
+	if len(a.pending) != 2 || a.confirm || a.force {
+		t.Fatal("k must confirm all selected processes")
+	}
+	a.updateConfirm("esc")
+	a.filter.SetValue("test-app")
+	a.refilter()
+	a.updateMain("ctrl+a")
+	if len(a.selected) != 1 {
+		t.Fatal("deselect visible must preserve hidden selections")
+	}
+	a.updateMain("x")
+	if len(a.pending) != 1 || a.pending[0].PID != 99 || !a.force {
+		t.Fatal("x must target the selected process even if hidden")
+	}
+}
+
+func TestCPUAutomaticallyGetsSecondSampleAndUpdatesDetails(t *testing.T) {
+	a := searchApp()
+	p := a.result.Processes[0]
+	p.MemoryKnown = true
+	p.MemoryBytes = 100
+	_, cmd := a.Update(scanMsg{generation: a.generation, result: model.Result{Processes: []model.Process{p}}})
+	if cmd == nil || !a.cpuWarmupDone || a.autoRefresh {
+		t.Fatal("startup CPU sampling must schedule once even in manual mode")
+	}
+	p.CPUKnown = true
+	p.CPUPercent = 12.5
+	_, cmd = a.Update(scanMsg{generation: a.generation, result: model.Result{Processes: []model.Process{p}}})
+	if cmd != nil {
+		t.Fatal("sampling must not become an endless scan loop")
+	}
+	if !a.detail.CPUKnown || a.detail.CPUPercent != 12.5 {
+		t.Fatal("open details retained stale CPU data")
+	}
+	if a.filter.Value() != "test-app" {
+		t.Fatal("sampling changed search")
+	}
+}

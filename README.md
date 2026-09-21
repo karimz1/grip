@@ -96,22 +96,91 @@ Contributor documentation:
 
 | Key | Action |
 | --- | --- |
+| `1` / `2` | Switch Processes / Locked files tabs |
 | `↑` / `↓`, `j` | Navigate |
 | `Enter` | Inspect a process |
 | `/` | Search processes or usage |
 | `Space` | Select a process |
-| `k` | Request normal termination |
-| `x` | Force kill |
+| `Ctrl+A` | Select / deselect all visible processes |
+| `k` | Request normal termination of selection, or current process |
+| `x` | Force kill selection, or current process |
 | `K` / `X` | Act on selected processes |
 | `r` | Refresh |
+| `a` | Toggle five-second auto-refresh |
+| `i` | Toggle process side panel on wide terminals |
+| `Tab` / `→` | Focus the tree; `↑` / `↓` choose a process, `k` / `x` stop it |
+| `Tab` / `←` / `Esc` | Return from the tree to the results |
+| `m` / `c` | Sort by RAM / CPU, highest first |
+| `n` / `p` | Sort by name / PID |
 | `Esc` | Clear search, cancel, or go back |
 | `?` | Help |
 | `q` / `Ctrl+C` | Back / quit |
 
+The **Locked files** tab lists confirmed Linux kernel locks with the file path and
+owning process. Press `Enter` for the full path, lock type, read/write mode and byte
+range. Ordinary open files are excluded. Detection uses Linux
+[`/proc/PID/fdinfo`](https://cdn.kernel.org/doc/html/latest/filesystems/proc.html)
+and is limited by permissions and scan timing; advisory locks do not necessarily
+prevent other applications from accessing the file. macOS and Windows currently
+show an explicit unsupported message in this tab; file usage remains available
+in **Processes**.
+
 In the process details view, `/` searches filenames, paths, DLLs, relations, and access
-modes.
+modes. Press `l` in details to toggle **Locks only** for that process without
+clearing the search. The summary counts distinct locked paths among the displayed
+usages, and confirmed `locked` rows use muted red text. Press `l` again for all usages.
+Search boxes are always visible; press `/` to type and see results live.
+The details table expands its filename column for long names and repeats the
+selected filename above the table. The full path stays below it; use `←` / `→`
+to page through paths longer than the preview.
+
+Plain terms match contiguous fragments or word/CamelCase prefixes, inspired by
+[JetBrains CamelHumps](https://www.jetbrains.com/help/rider/Navigation_and_Search__CamelHumps.html).
+For example, `dll` matches `.dll` without picking scattered letters out of a long
+directory path, and `MIMJWT` matches `Microsoft.IdentityModel.JsonWebTokens.dll`.
+Filename and process-name matches rank above directory-only matches; explicit
+PID, name, CPU or RAM sorting still takes precedence. Arbitrary letter skipping
+is no longer used. Terms containing `*` match literal chunks in
+order, ignoring case: `micro*dll` finds `Microsoft.Core.dll`, and `*.dll` finds
+paths containing `.dll`. `*` matches zero or more characters, including path
+separators; patterns can match anywhere in a field. Spaces combine terms, for
+example `micro*dll mapped`. This works in Processes, Locked files and details.
+
+File-related search terms carry into process details automatically. The matched
+path and `+N` count reflect matching usages; clear the details search with `Esc`
+to see all usages again. Process-only terms, such as the PID, stay in the main
+search. Selections survive filtering; the confirmation lists all selected targets,
+including those currently hidden. `Ctrl+A` toggles only the visible results.
+
+Wide terminals show a process inspector beside the table. On Linux it includes
+up to eight observed ancestors and resident memory (RSS). CPU usage becomes
+available after two scans of the same process; a follow-up scan runs automatically
+about one second after the initial results. It measures its share of total
+machine CPU capacity over that interval (100% means all CPUs). Enable `a` for
+regular updates. Missing metrics show `—`; other platforms currently do not
+collect these metrics or ancestry. The panel hides automatically on compact
+terminals; process details retain resource and parent information.
+
+Tab focuses the existing nested ancestry tree, initially highlighting the current
+process. Up moves toward its parents; Down returns toward the current process.
+Actions apply only to the highlighted tree process, even if other processes are
+selected in the main list. The confirmation names that exact process.
+The selected ancestry snapshot remains fixed across refreshes; its captured
+process identity is revalidated before termination. Protected processes and
+ancestors without an available identity cannot be stopped. Parent termination
+can close its application and affect child processes; it does not recursively
+send termination to the whole tree.
 
 Every termination requires confirmation, with **Cancel selected by default**.
+
+Only `1` and `2` switch views. Tab changes table/tree focus, or chooses the action
+in confirmation dialogs. While typing a search it stays in the search input.
+
+The Processes **ACCESS** column summarizes observed access across the matching
+usages (and follows the search filter). `cwd` means the process has the folder as
+its current working directory; it does not imply read or write access. `read/write`
+means both modes were observed, possibly on different matching files. These are
+access modes, not a measurement of current I/O activity.
 
 Access labels use restrained colors: green for read, amber for write, cyan for
 mapped/executable references, and muted text for unknown access. Colors describe
