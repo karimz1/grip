@@ -20,6 +20,8 @@ force kill from the same interface.
     <img src="images/demo.gif" alt="dupster tui demo" width="100%">
 </a>
 
+View Demo in High Res: https://asciinema.org/a/1265936
+
 
 ```sh
 oflh .
