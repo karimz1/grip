@@ -24,8 +24,8 @@ jobs:
         run: |
           python3 scripts/release.py validate --version "$TAG"
           test "$TAG" != dev
-          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
-          test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+          git fetch --no-tags origin "refs/tags/$TAG"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$(git rev-parse HEAD)"
   test:
     needs: validate
     uses: ./.github/workflows/ci.yml
