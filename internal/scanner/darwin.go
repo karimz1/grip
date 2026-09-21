@@ -13,7 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego"
-	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 	"golang.org/x/sys/unix"
 )
 

@@ -21,9 +21,9 @@ func (a *App) View() tea.View {
 	if a.stopping {
 		activity = "  requesting termination…"
 	}
-	title := brand.Render("grip") + "  " + muted.Render("see what's using your files") + accent.Render(activity)
-	version := muted.Render("v" + safe(a.version))
-	source := muted.Render("Source: https://github.com/karimz1/grip")
+	title := brand.Render("oflh") + "  " + muted.Render("Open File Lock Handle") + accent.Render(activity)
+	version := muted.Render(safe(a.version))
+	source := ""
 	lines := []string{headerLine(title, version, w), headerLine(accent.Render(safe(a.target.Path)), source, w), muted.Render(strings.Repeat("─", w))}
 	var content []string
 	switch a.screen {
@@ -37,16 +37,20 @@ func (a *App) View() tea.View {
 	footer := a.footer()
 	status := a.status
 	if status == "" {
-		status = "Usage does not necessarily mean a file is locked."
+		status = "read · write · mapped / executable · unknown"
 	}
 	statusLine := muted.Render(safe(status))
+	if a.status == "" {
+		statusLine = success.Render("read") + muted.Render(" · ") + warning.Render("write") + muted.Render(" · ") + accent.Render("mapped / executable") + muted.Render(" · unknown")
+	}
 	if a.statusError {
 		statusLine = danger.Render(safe(status))
 	}
-	bottom := []string{muted.Render(strings.Repeat("─", w)), statusLine}
+	bottom := []string{statusLine}
 	if len(a.result.Warnings) > 0 {
 		bottom = append(bottom, warning.Render(safe(strings.Join(a.result.Warnings, " • "))))
 	}
+	bottom = append(bottom, muted.Render(strings.Repeat("─", w)))
 	bottom = append(bottom, footer...)
 	available := max(1, a.height-len(lines)-len(bottom)-2)
 	if a.screen != mainScreen {
@@ -67,7 +71,7 @@ func (a *App) View() tea.View {
 	lines = append(lines, bottom...)
 	// Preserve the action footer even on very small terminal sizes.
 	if a.height < 12 {
-		lines = []string{accent.Render("grip " + safe(a.target.Path))}
+		lines = []string{accent.Render("oflh " + safe(a.target.Path))}
 		if p := a.current(); p != nil {
 			lines = append(lines, fmt.Sprintf("%d %s", p.PID, safe(p.Name)))
 		}
@@ -165,9 +169,9 @@ func (a *App) listView(w int) []string {
 		}
 		var row string
 		if w >= 94 {
-			row = marker + cell(fmt.Sprint(p.PID), 8) + cell(p.Name, 20) + cell(p.User, 13) + cell(u.Relation, 13) + cell(u.Access, 12) + cell(path, w-69)
+			row = marker + cell(fmt.Sprint(p.PID), 8) + cell(p.Name, 20) + cell(p.User, 13) + evidenceCell(u.Relation, 13) + evidenceCell(u.Access, 12) + cell(path, w-69)
 		} else if w >= 62 {
-			row = marker + cell(fmt.Sprint(p.PID), 8) + cell(p.Name, 19) + cell(u.Relation, 12) + cell(path, w-42)
+			row = marker + cell(fmt.Sprint(p.PID), 8) + cell(p.Name, 19) + evidenceCell(u.Relation, 12) + cell(path, w-42)
 		} else {
 			row = marker + cell(fmt.Sprint(p.PID), 9) + cell(p.Name, max(1, w-12))
 			if w >= 42 {
@@ -175,7 +179,7 @@ func (a *App) listView(w int) []string {
 			}
 		}
 		if i == a.cursor {
-			row = selectedStyle.Render(row)
+			row = selectedStyle.Render(ansi.Strip(row))
 		}
 		lines = append(lines, row)
 	}
@@ -199,8 +203,9 @@ func (a *App) confirmView(w int) []string {
 }
 
 func (a *App) footer() []string {
+	w := max(1, a.width-4)
 	if a.filtering {
-		return []string{accent.Render("Enter apply   Esc cancel")}
+		return shortcutLines(w, shortcut{"Enter", "apply"}, shortcut{"Esc", "cancel"})
 	}
 	switch a.screen {
 	case confirmScreen:
@@ -213,23 +218,30 @@ func (a *App) footer() []string {
 		} else {
 			cancel = selectedStyle.Render(cancel)
 		}
-		return []string{cancel + "   " + action, muted.Render("Tab choose · Enter confirm · Esc cancel · ↑↓ review")}
+		return append([]string{cancel + "   " + action}, shortcutLines(w, shortcut{"Tab", "choose"}, shortcut{"Enter", "confirm"}, shortcut{"Esc", "cancel"}, shortcut{"↑↓", "review"})...)
 	case detailScreen:
-		return []string{accent.Render("/ search usages   ↑↓ scroll   Esc clear / back"), accent.Render("k terminate process   x force kill process")}
+		if a.width < 40 {
+			return shortcutLines(w, shortcut{"/", "search"}, shortcut{"Esc", "back"})
+		}
+		if a.width < 80 {
+			return shortcutLines(w, shortcut{"/", "search"}, shortcut{"↑↓", "select"}, shortcut{"←→", "path"}, shortcut{"Esc", "back"})
+		}
+		return shortcutLines(w, shortcut{"/", "search"}, shortcut{"↑↓", "select"}, shortcut{"←→", "path"}, shortcut{"k", "stop"}, shortcut{"x", "force kill"}, shortcut{"Esc", "back"})
 	case helpScreen:
-		return []string{accent.Render("↑↓ scroll   Esc back")}
+		return shortcutLines(w, shortcut{"↑↓", "scroll"}, shortcut{"Esc", "back"})
 	default:
-		auto := muted.Render("[a] AUTO-REFRESH: OFF")
+		auto := "auto off"
 		if a.autoRefresh {
-			auto = accent.Render("[a] AUTO-REFRESH: ON")
+			auto = "auto on"
 		}
-		if a.width < 65 {
-			return []string{accent.Render("↑↓ move  Enter inspect  Space select"), accent.Render("k stop  x force  K/X bulk  / filter  r refresh  ") + auto + accent.Render("  ?  q")}
+		hints := []shortcut{{"/", "search"}, {"↑↓", "move"}, {"Enter", "inspect"}, {"Space", "select"}, {"a", auto}, {"r", "refresh"}, {"k", "stop"}, {"x", "force kill"}, {"?", "help"}, {"q", "quit"}}
+		if a.width < 80 {
+			hints = []shortcut{{"/", "search"}, {"↑↓", "move"}, {"Enter", "inspect"}, {"?", "help"}, {"q", "quit"}}
 		}
-		return []string{accent.Render("↑↓ navigate  Enter inspect  Space select  / filter"), accent.Render("k terminate  x force  K/X bulk  r refresh  ") + auto + accent.Render("  ? help  q quit")}
+		return shortcutLines(w, hints...)
 	}
 }
 
 func helpView() []string {
-	return []string{accent.Render("A LITTLE GRIP GOES A LONG WAY"), muted.Render("Source: https://github.com/karimz1/grip"), "", "↑ / ↓, j      Navigate processes", "PgUp / PgDn    Move one page", "Home / End     First / last process", "Enter          Inspect all matching paths", "Space          Toggle process selection", "/              Fuzzy filter (PID, name, user, path, access)", "Esc            Clear filter / back / cancel", "r              Refresh; cancels the previous scan", "a              Toggle five-second auto-refresh", "k              Request termination of current process", "x              Force kill current process", "K / X          Selected processes; if none, all filtered processes", "Tab            Choose Cancel / Terminate in confirmation", "?              Show this help", "q / Ctrl+C     Quit", "", warning.Render("Every termination requires confirmation. Cancel is the default."), "Selections survive filtering; bulk confirmation includes every target.", "Process identities are revalidated before any termination.", "", accent.Render("READING THE EVIDENCE"), "open           An observed file descriptor", "cwd            The current working directory", "executable     The process executable", "mapped         A mapped file or loaded module", "restart manager  Windows reports an application using a resource", "unknown        The OS does not expose this information", "", "A file being open does not prove it is locked.", "Permission restrictions and races can make results incomplete."}
+	return []string{accent.Render("OPEN FILE LOCK HANDLE"), muted.Render("Source: https://github.com/karimz1/open-file-lock-handle"), "", "↑ / ↓, j      Navigate processes", "PgUp / PgDn    Move one page", "Home / End     First / last process", "Enter          Inspect all matching paths", "Space          Toggle process selection", "/              Fuzzy filter (PID, name, user, path, access)", "Esc            Clear filter / back / cancel", "r              Refresh; cancels the previous scan", "a              Toggle five-second auto-refresh", "k              Request termination of current process", "x              Force kill current process", "K / X          Selected processes; if none, all filtered processes", "Tab            Choose Cancel / Terminate in confirmation", "?              Show this help", "q / Ctrl+C     Quit", "", warning.Render("Every termination requires confirmation. Cancel is the default."), "Selections survive filtering; bulk confirmation includes every target.", "Process identities are revalidated before any termination.", "", accent.Render("READING THE EVIDENCE"), "open           An observed file descriptor", "cwd            The current working directory", "executable     The process executable", "mapped         A mapped file or loaded module", "restart manager  Windows reports an application using a resource", "unknown        The OS does not expose this information", "", "A file being open does not prove it is locked.", "Permission restrictions and races can make results incomplete."}
 }

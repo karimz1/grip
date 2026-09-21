@@ -44,20 +44,21 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: grip-*
+          pattern: oflh-*
           merge-multiple: true
           path: dist
-      - name: Prepare the real release formula with local archive URLs
+      - name: Prepare the real release formula with local executable URLs
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          python3 scripts/release.py assemble --version "$TAG"
+          python3 scripts/release.py assemble --version "$TAG" --formula "$RUNNER_TEMP/oflh.rb"
           python3 - <<'PYCODE'
           from pathlib import Path
           import re
-          p=Path('dist/grip.rb')
+          import os
+          p=Path(os.environ['RUNNER_TEMP']) / 'oflh.rb'
           s=p.read_text()
-          s=re.sub(r'https://github.com/karimz1/grip/releases/download/[^/]+/',Path('dist').resolve().as_uri()+'/',s)
+          s=re.sub(r'https://github.com/karimz1/open-file-lock-handle/releases/download/[^/]+/',Path('dist').resolve().as_uri()+'/',s)
           p.write_text(s)
           PYCODE
       - name: Install and test the generated formula
@@ -66,10 +67,10 @@ jobs:
           if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
             eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           fi
-          brew tap-new karimz1/grip-ci --no-git
-          cp dist/grip.rb "$(brew --repository karimz1/grip-ci)/Formula/grip.rb"
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install --formula karimz1/grip-ci/grip
-          HOMEBREW_NO_AUTO_UPDATE=1 brew test karimz1/grip-ci/grip
+          brew tap-new karimz1/open-file-lock-handle-ci --no-git
+          cp "$RUNNER_TEMP/oflh.rb" "$(brew --repository karimz1/open-file-lock-handle-ci)/Formula/oflh.rb"
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install --formula karimz1/open-file-lock-handle-ci/oflh
+          HOMEBREW_NO_AUTO_UPDATE=1 brew test karimz1/open-file-lock-handle-ci/oflh
   draft:
     needs: [test, homebrew]
     runs-on: ubuntu-24.04
@@ -79,14 +80,14 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: grip-*
+          pattern: oflh-*
           merge-multiple: true
           path: dist
-      - name: Verify all seven targets and generate checksums and Homebrew formula
+      - name: Verify all six targets and generate checksums and Homebrew formula
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          python3 scripts/release.py assemble --version "$TAG"
+          python3 scripts/release.py assemble --version "$TAG" --formula "$RUNNER_TEMP/oflh.rb"
           cd dist
           sha256sum --check checksums.txt
       - name: Create or update draft release

@@ -1,8 +1,8 @@
-# grip
+# Open File Lock Handle (`oflh`)
 
 **See what's using your files.**
 
-grip is a cross-platform terminal UI for finding which processes are using files,
+Open File Lock Handle is a cross-platform terminal UI for finding which processes are using files,
 directories, DLLs, and other open file handles.
 
 Inspect why a process matched, search its usage, and request a graceful shutdown or
@@ -11,18 +11,18 @@ force kill from the same interface.
 [![asciicast](https://asciinema.org/a/1265853.svg)](https://asciinema.org/a/1265853)
 
 ```sh
-grip .
+oflh .
 ```
 
-Point grip at a directory to inspect its descendants, or at a specific file:
+Point oflh at a directory to inspect its descendants, or at a specific file:
 
 ```sh
-grip ./build
-grip ./build/plugin.dll
-grip "/path/with spaces"
+oflh ./build
+oflh ./build/plugin.dll
+oflh "/path/with spaces"
 ```
 
-With no argument, grip uses the current directory.
+With no argument, oflh uses the current directory.
 
 ## Install
 
@@ -31,49 +31,51 @@ With no argument, grip uses the current directory.
 Recommended on Linux and macOS:
 
 ```sh
-brew install karimz1/tap/grip
+brew install karimz1/tap/oflh
 ```
 
 Update later with:
 
 ```sh
-brew upgrade grip
+brew upgrade oflh
 ```
 
-The fully qualified name is required because Homebrew already has an unrelated package
-named `grip`.
+Previously named **grip**. The command is now `oflh`. Until the first renamed
+stable release is published, use `brew install --HEAD karimz1/tap/oflh`.
 
 ### Windows and release binaries
 
-Download the latest archive from
-[Releases](https://github.com/karimz1/grip/releases).
+Download the executable for your operating system and architecture from
+[Releases](https://github.com/karimz1/open-file-lock-handle/releases).
 
-On Windows, extract `grip.exe` and place it on your `PATH`.
+On Windows, rename the downloaded executable to `oflh.exe` and place it on your `PATH`.
+On Linux and macOS, rename it to `oflh`, run `chmod +x oflh`, and move it to a directory on your `PATH`.
 
 Prebuilt binaries are available for:
 
-| OS | Architectures | Archive |
+| OS | Architectures | Download |
 | --- | --- | --- |
-| Linux | x86-64, ARM64 | `.tar.gz` |
-| macOS | Intel, Apple Silicon | `.tar.gz` |
-| Windows | x86-64, ARM64, x86 (32-bit) | `.zip` |
+| Linux | x86-64, ARM64 | Standalone executable |
+| macOS | Intel, Apple Silicon | Standalone executable |
+| Windows | x86-64, ARM64 | `.exe` |
 
-Each release includes `checksums.txt` for SHA-256 verification.
+New releases contain six executables and `checksums.txt` for SHA-256 verification.
+GitHub also provides its standard source-code downloads. Older releases retain their original assets.
 
 ### Build from source
 
 Requires Go 1.26 or newer.
 
 ```sh
-go build -o bin/grip ./cmd/grip
-./bin/grip .
+go build -o bin/oflh ./cmd/oflh
+./bin/oflh .
 ```
 
 On Windows:
 
 ```powershell
-go build -o bin/grip.exe ./cmd/grip
-.\bin\grip.exe .
+go build -o bin/oflh.exe ./cmd/oflh
+.\bin\oflh.exe .
 ```
 
 Contributor documentation:
@@ -102,6 +104,10 @@ modes.
 
 Every termination requires confirmation, with **Cancel selected by default**.
 
+Access labels use restrained colors: green for read, amber for write, cyan for
+mapped/executable references, and muted text for unknown access. Colors describe
+observed usage, not proof of a file lock. Labels remain readable without color.
+
 ## Platform support
 
 | Platform | Discovery | Normal termination |
@@ -114,23 +120,23 @@ On Windows, console and service processes may require an explicit force kill.
 
 ## FAQ
 
-### Why does grip exist?
+### Why does oflh exist?
 
 Finding the process using a file often requires different tools on different operating
 systems.
 
-grip provides one interactive workflow:
+oflh provides one interactive workflow:
 
 **file → process → inspect → act**
 
 Instead of starting with a PID or combining commands such as `lsof`, `fuser`, and `ps`,
 you start with the file or directory you care about.
 
-### Does grip unlock files?
+### Does oflh unlock files?
 
 Not directly.
 
-grip finds processes that are using a file or directory. You can then inspect or terminate
+oflh finds processes that are using a file or directory. You can then inspect or terminate
 those processes.
 
 Whether that makes the file available depends on what the process was doing and how the
@@ -140,19 +146,19 @@ operating system handles it.
 
 Usually not.
 
-Permissions determine which processes and resources grip can inspect or terminate. Some
+Permissions determine which processes and resources oflh can inspect or terminate. Some
 processes may not be fully visible without elevated privileges.
 
-### Is grip stable?
+### Is oflh stable?
 
-grip is currently in beta.
+oflh is currently in beta.
 
 I primarily test it on Linux, so feedback from macOS and Windows users is especially useful.
 
-If grip misses a process, behaves unexpectedly, or something in the UI is unclear, please
-[open an issue](https://github.com/karimz1/grip/issues).
+If oflh misses a process, behaves unexpectedly, or something in the UI is unclear, please
+[open an issue](https://github.com/karimz1/open-file-lock-handle/issues).
 
-If you find grip useful, a GitHub star is appreciated.
+If you find oflh useful, a GitHub star is appreciated.
 
 ## License
 

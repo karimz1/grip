@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 )
 
 type recordingScanner struct {

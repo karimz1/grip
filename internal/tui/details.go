@@ -74,12 +74,12 @@ func (a *App) detailsPage() tea.View {
 	}
 	p := a.detail
 	if a.height < 18 || a.width < 28 {
-		v := tea.NewView(ansi.Truncate("grip · enlarge terminal to inspect", a.width, "…") + "\n" + ansi.Truncate("Esc / q back", a.width, "…"))
+		v := tea.NewView(ansi.Truncate("oflh · enlarge terminal to inspect", a.width, "…") + "\n" + ansi.Truncate("Esc / q back", a.width, "…"))
 		v.AltScreen = true
 		return v
 	}
 	lines := []string{
-		brand.Render("grip") + muted.Render("  /  process details"),
+		brand.Render("oflh") + muted.Render("  /  process details"),
 		accent.Render(safe(p.Name)) + muted.Render(fmt.Sprintf("   PID %d   ·   %s", p.PID, present(p.User))),
 		muted.Render("EXE  ") + cell(present(p.Executable), w-5),
 		muted.Render("CWD  ") + cell(present(p.CWD), w-5),
@@ -100,12 +100,9 @@ func (a *App) detailsPage() tea.View {
 	count := fmt.Sprintf("%d of %d usages", len(a.usageRows), len(p.Usages))
 	positionText := fmt.Sprintf("%d / %d", position, len(a.usageRows))
 	lines = append(lines, accent.Render(count)+strings.Repeat(" ", max(1, w-ansi.StringWidth(count)-len(positionText)))+muted.Render(positionText))
-	footer := []string{accent.Render("/ search  ↑↓ select  ←→ path  Esc back"), muted.Render("k terminate process · x force kill · q back")}
-	if a.filtering {
-		footer = []string{accent.Render("↑↓ browse matches  Enter apply  Esc cancel"), muted.Render("Fuzzy search · filename, path, relation, access")}
-	}
-	// Three preview lines, two footer lines, two borders; the table includes its header.
-	tableHeight := max(3, a.height-len(lines)-7)
+	footer := append([]string{muted.Render(strings.Repeat("─", w))}, a.footer()...)
+	// Metadata, path preview and footer stay visible while the table scrolls.
+	tableHeight := max(1, a.height-len(lines)-len(footer)-5)
 	a.usageTable.SetWidth(w - 2)
 	a.usageTable.SetHeight(tableHeight)
 	tableView := a.usageTable.View()
@@ -126,7 +123,7 @@ func (a *App) detailsPage() tea.View {
 		}
 		parts := strings.Split(ansi.Hardwrap(path, w, true), "\n")
 		a.pathOffset = min(a.pathOffset, max(0, len(parts)-2))
-		preview[0] = muted.Render("SELECTED PATH · " + safe(u.Relation) + " · " + safe(u.Access))
+		preview[0] = muted.Render("SELECTED PATH · ") + evidenceStyle(u.Relation).Render(safe(u.Relation)) + muted.Render(" · ") + evidenceStyle(u.Access).Render(safe(u.Access))
 		if len(parts) > 2 {
 			preview[0] = muted.Render(fmt.Sprintf("SELECTED PATH · ←→ lines %d–%d / %d", a.pathOffset+1, min(len(parts), a.pathOffset+2), len(parts)))
 		}

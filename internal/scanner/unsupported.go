@@ -7,4 +7,4 @@ import (
 	"runtime"
 )
 
-func New() (Scanner, error) { return nil, fmt.Errorf("grip does not support %s", runtime.GOOS) }
+func New() (Scanner, error) { return nil, fmt.Errorf("oflh does not support %s", runtime.GOOS) }

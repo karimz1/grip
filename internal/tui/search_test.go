@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 )
 
 func searchApp() *App {

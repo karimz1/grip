@@ -3,7 +3,7 @@ package tui
 import (
 	tea "charm.land/bubbletea/v2"
 	"fmt"
-	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 )
 
 func (a *App) prepareKill(key string) {

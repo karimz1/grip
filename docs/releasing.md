@@ -14,7 +14,6 @@ Every push to `main` and every pull request runs the following matrix:
 | macOS 15 Apple Silicon | darwin/arm64 | Yes |
 | Windows 2025 x86-64 | windows/amd64 | Yes |
 | Windows 11 ARM | windows/arm64 | No (Go does not support it) |
-| Windows 2025 x86-64, 32-bit Go target | windows/386 | No (Go does not support it) |
 
 Tests start child processes using an explicit pipe handshake. They cover an open file
 with spaces and Unicode, directory descendants, process metadata, cancellation, stale
@@ -25,8 +24,8 @@ helper returns an honest error instead of silently force-killing it.
 
 Path tests run on the host OS, including Windows drive, separator, case and UNC rules.
 UI tests verify searching, resizing, table navigation and safe confirmation behavior.
-Packaging tests verify archive contents, executable permissions, reproducibility,
-checksums and the four-platform Homebrew formula.
+Packaging tests verify the exact six executable targets, payload integrity, checksums,
+and Homebrew formula URLs. Unexpected artifacts are rejected.
 
 The no-cgo tests exercise the same runtime configuration as release binaries. The race
 pass is an additional check. Each job builds, runs `--version` and `--help`, then packages
@@ -43,8 +42,7 @@ git push origin v0.1.0
 ```
 
 The Release workflow reruns the full matrix for that tag and installs/tests the generated Homebrew formula on Linux and macOS. If any target fails, no draft
-is created. A passing run uploads seven raw executables, seven archives, `checksums.txt`
-and a generated `grip.rb` to the draft release. Version strings omit the leading `v`.
+is created. A passing run uploads six raw executables and `checksums.txt` to the draft release. Version strings omit the leading `v`.
 
 To retry an existing tag, use the workflow UI and select **that tag** as the workflow
 ref, or run:
@@ -58,16 +56,17 @@ published releases, and allows updating an existing draft. Do not move a publish
 
 ## Before public distribution
 
-1. Review all seven green CI jobs and the draft artifacts.
+1. Review all six green CI jobs and the draft artifacts.
 2. Decide whether to add Developer ID signing/notarization for macOS. It is not configured.
 3. Verify the repository visibility, README status, and release metadata.
 4. Publish the reviewed draft in GitHub Releases.
-5. Run **Update grip** in `homebrew-tap`, or wait for its daily scheduled run.
+5. Publishing triggers **Update Homebrew tap**, which immediately dispatches **Update oflh** in `homebrew-tap`.
 
-The tap updater only follows stable **published** releases. It verifies the formula and
-all referenced archives against the release checksums, then commits just `Formula/grip.rb`.
+The tap updater only follows stable **published** releases. It verifies the four Unix executables against the release checksums and generates
+`Formula/oflh.rb` locally. On the first renamed release, it also migrates the legacy
+`grip` formula using `formula_renames.json`.
 It leaves other tools' formulae untouched. The next `brew update` makes the new version
-available via `brew install karimz1/tap/grip` on Linux or macOS, Intel or ARM.
+available via `brew install karimz1/tap/oflh` on Linux or macOS, Intel or ARM.
 
 ## Backend API references
 
@@ -78,3 +77,18 @@ available via `brew install karimz1/tap/grip` on Linux or macOS, Intel or ARM.
 - [Windows resource users](https://learn.microsoft.com/en-us/windows/win32/api/restartmanager/nf-restartmanager-rmgetlist)
 - [Windows Toolhelp snapshots](https://learn.microsoft.com/en-us/windows/win32/api/tlhelp32/nf-tlhelp32-createtoolhelp32snapshot)
 - [Homebrew taps](https://docs.brew.sh/Taps)
+
+## One-time tap trigger setup
+
+In this source repository, add an Actions secret named `HOMEBREW_TAP_TOKEN`.
+Use a fine-grained GitHub token scoped only to `karimz1/homebrew-tap` with
+**Actions: Read and write** permission. The tap commits its own formula with its
+built-in `GITHUB_TOKEN`; the dispatch token does not need Contents write permission.
+
+Without this secret, the dispatch job fails with an explicit setup message. You can
+still run `gh workflow run update-oflh.yml --repo karimz1/homebrew-tap`; a daily
+fallback also remains. Prereleases never update the stable formula.
+
+Until the first renamed stable release is published, the tap keeps the existing
+`grip` formula and offers `oflh` through `brew install --HEAD karimz1/tap/oflh`.
+Old releases are immutable historical downloads; they are not repackaged.

@@ -4,7 +4,7 @@ package scanner
 import (
 	"context"
 	"errors"
-	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 	"os"
 )
 
@@ -17,7 +17,7 @@ var ErrChanged = errors.New("process exited or PID was reused; refresh before tr
 
 func validate(id model.Identity) error {
 	if id.PID <= 1 || id.PID == os.Getpid() {
-		return errors.New("refusing to terminate grip or a system process")
+		return errors.New("refusing to terminate oflh or a system process")
 	}
 	if id.Started == "" {
 		return errors.New("process identity unavailable; refusing to terminate")

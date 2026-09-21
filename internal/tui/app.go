@@ -9,8 +9,8 @@ import (
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/karimz1/grip/internal/model"
-	"github.com/karimz1/grip/internal/scanner"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/scanner"
 )
 
 type screen int
@@ -383,4 +383,4 @@ func (a *App) updateDetails(key string) tea.Cmd {
 	return nil
 }
 
-func (a *App) pageSize() int { return max(1, a.height-11) }
+func (a *App) pageSize() int { return max(1, a.height-10-len(a.footer())) }

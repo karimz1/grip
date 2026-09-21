@@ -13,7 +13,8 @@ var (
 	warning       = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	danger        = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 	selectedStyle = lipgloss.NewStyle().Reverse(true)
-	brand         = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("6")).Bold(true).Padding(0, 1)
+	brand         = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
+	success       = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 )
 
 // OS-owned names are untrusted terminal text, including OSC/CSI and bidi controls.
@@ -37,4 +38,51 @@ func present(s string) string {
 		return "unavailable"
 	}
 	return safe(s)
+}
+
+// Keep evidence labels readable without color; never imply that usage proves a lock.
+func evidenceStyle(value string) lipgloss.Style {
+	switch value {
+	case "read":
+		return success
+	case "write", "read/write", "deleted":
+		return warning
+	case "mapped", "executable", "execute":
+		return accent
+	case "unknown", "unavailable":
+		return muted
+	default:
+		return lipgloss.NewStyle()
+	}
+}
+func evidenceCell(value string, width int) string {
+	return evidenceStyle(value).Render(cell(value, width))
+}
+
+type shortcut struct{ key, label string }
+
+// Wrap complete hints rather than clipping commands at the right terminal edge.
+func shortcutLines(width int, hints ...shortcut) []string {
+	lines := []string{}
+	line := ""
+	for _, hint := range hints {
+		keyStyle := accent
+		if hint.key == "x" || hint.key == "X" {
+			keyStyle = danger
+		}
+		part := keyStyle.Render(hint.key) + " " + muted.Render(hint.label)
+		sep := muted.Render(" · ")
+		if line != "" && ansi.StringWidth(line+sep+part) > width {
+			lines = append(lines, line)
+			line = ""
+		}
+		if line != "" {
+			line += sep
+		}
+		line += ansi.Truncate(part, width, "…")
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
 }

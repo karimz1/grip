@@ -12,15 +12,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 )
 
 // A pipe handshake makes discovery deterministic; no sleep is used to guess readiness.
 func TestScannerHelperProcess(t *testing.T) {
-	if os.Getenv("GRIP_SCANNER_HELPER") != "1" {
+	if os.Getenv("OFLH_SCANNER_HELPER") != "1" {
 		return
 	}
-	path := os.Getenv("GRIP_SCANNER_FILE")
+	path := os.Getenv("OFLH_SCANNER_FILE")
 	if err := os.Chdir(filepath.Dir(path)); err != nil {
 		os.Exit(2)
 	}
@@ -38,7 +38,7 @@ func TestScannerHelperProcess(t *testing.T) {
 func startHelper(t *testing.T, path string) *exec.Cmd {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestScannerHelperProcess$")
-	cmd.Env = append(os.Environ(), "GRIP_SCANNER_HELPER=1", "GRIP_SCANNER_FILE="+path)
+	cmd.Env = append(os.Environ(), "OFLH_SCANNER_HELPER=1", "OFLH_SCANNER_FILE="+path)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

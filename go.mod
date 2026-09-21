@@ -1,4 +1,4 @@
-module github.com/karimz1/grip
+module github.com/karimz1/open-file-lock-handle
 
 go 1.26.0
 

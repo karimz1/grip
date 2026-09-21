@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"unsafe"
 
-	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 	"golang.org/x/sys/windows"
 )
 

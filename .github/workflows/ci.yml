@@ -26,13 +26,12 @@ jobs:
           - {os: darwin, arch: arm64, runner: macos-15, race: true}
           - {os: windows, arch: amd64, runner: windows-2025, race: true}
           - {os: windows, arch: arm64, runner: windows-11-arm, race: false}
-          - {os: windows, arch: '386', runner: windows-2025, race: false}
     defaults:
       run:
         shell: bash
     env:
       GOARCH: ${{ matrix.arch }}
-      GRIP_VERSION: ${{ inputs.version || 'dev' }}
+      OFLH_VERSION: ${{ inputs.version || 'dev' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -44,7 +43,7 @@ jobs:
           python-version: '3.x'
       - name: Validate version and formatting
         run: |
-          python scripts/release.py validate --version "$GRIP_VERSION"
+          python scripts/release.py validate --version "$OFLH_VERSION"
           UNFORMATTED="$(gofmt -l cmd internal)"
           if [ -n "$UNFORMATTED" ]; then printf "%s\n" "$UNFORMATTED"; exit 1; fi
           go mod verify
@@ -65,15 +64,15 @@ jobs:
         env:
           CGO_ENABLED: '0'
         run: |
-          VERSION="${GRIP_VERSION#v}"
-          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o bin/grip${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/grip
-          ./bin/grip${{ matrix.os == 'windows' && '.exe' || '' }} --version
-          ./bin/grip${{ matrix.os == 'windows' && '.exe' || '' }} --help
+          VERSION="${OFLH_VERSION#v}"
+          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o bin/oflh${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/oflh
+          ./bin/oflh${{ matrix.os == 'windows' && '.exe' || '' }} --version
+          ./bin/oflh${{ matrix.os == 'windows' && '.exe' || '' }} --help
       - name: Package tested executable
-        run: python scripts/release.py package --version "$GRIP_VERSION" --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --binary bin/grip${{ matrix.os == 'windows' && '.exe' || '' }}
+        run: python scripts/release.py package --version "$OFLH_VERSION" --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --binary bin/oflh${{ matrix.os == 'windows' && '.exe' || '' }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: grip-${{ matrix.os }}-${{ matrix.arch }}
+          name: oflh-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
           retention-days: 7

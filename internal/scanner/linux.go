@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/karimz1/grip/internal/model"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 	"golang.org/x/sys/unix"
 	"os"
 	"os/user"
@@ -238,7 +238,7 @@ func (s *native) Scan(ctx context.Context, target model.Target) (model.Result, e
 		result.Warnings = append(result.Warnings, fmt.Sprintf("Limited visibility for %d processes (permissions). Elevated access may reveal more.", denied))
 	}
 	if foreign > 0 {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("Skipped %d processes in other mount namespaces; run grip inside their container.", foreign))
+		result.Warnings = append(result.Warnings, fmt.Sprintf("Skipped %d processes in other mount namespaces; run oflh inside their container.", foreign))
 	}
 	result.Normalize()
 	return result, nil
