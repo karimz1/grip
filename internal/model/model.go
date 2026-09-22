@@ -94,7 +94,7 @@ func (r *Result) Normalize() {
 	sort.Slice(r.Processes, func(i, j int) bool { return r.Processes[i].PID < r.Processes[j].PID })
 }
 
-// MatchesFilter applies fragment/CamelCase matching, or literal wildcard chunks.
+// MatchesFilter applies fragment/CamelCase matching with optional wildcards.
 func (p Process) MatchesFilter(query string) bool {
 	fields := []string{fmt.Sprint(p.PID), p.Name, p.User, p.Executable, p.CWD}
 	for _, u := range p.Usages {
@@ -124,52 +124,77 @@ func matchesFields(query string, fields []string) bool {
 	return true
 }
 
-// Plain text uses contiguous fragments or word/CamelCase prefixes. Gaps may
-// jump to a word boundary, never arbitrary letters or across path components.
-func smartMatch(term, field string) bool {
-	if strings.Contains(strings.ToLower(field), term) {
+// Match each wildcard-separated chunk using the same fragment/CamelCase rules.
+// Taking the earliest ending match leaves the most space for subsequent chunks.
+func matchesTerm(term, field string) bool {
+	term = strings.ToLower(term)
+	if !strings.Contains(term, "*") && strings.Contains(strings.ToLower(field), term) {
 		return true
 	}
-	for _, component := range strings.FieldsFunc(field, func(r rune) bool { return r == '/' || r == '\\' }) {
-		chars := []rune(component)
-		previous := make([]bool, len(chars))
-		for qi, q := range []rune(term) {
-			next := make([]bool, len(chars))
-			earlier := false
-			for j, c := range chars {
-				boundary := j == 0 || !unicode.IsLetter(chars[j-1]) && !unicode.IsDigit(chars[j-1]) || unicode.IsUpper(c) && (unicode.IsLower(chars[j-1]) || j+1 < len(chars) && unicode.IsLower(chars[j+1]))
-				if unicode.ToLower(c) == q {
-					if qi == 0 {
-						next[j] = boundary
-					} else {
-						next[j] = j > 0 && previous[j-1] || boundary && earlier
-					}
-				}
-				earlier = earlier || previous[j]
-			}
-			previous = next
-		}
-		for _, matched := range previous {
-			if matched {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Wildcards match ordered literal chunks anywhere in a field.
-func matchesTerm(term, field string) bool {
-	if !strings.Contains(term, "*") {
-		return smartMatch(term, field)
-	}
-	field = strings.ToLower(field)
+	chars := []rune(field)
+	start := 0
 	for _, part := range strings.Split(term, "*") {
-		at := strings.Index(field, part)
-		if at < 0 {
+		end := smartMatchEnd([]rune(part), chars, start)
+		if end < 0 {
 			return false
 		}
-		field = field[at+len(part):]
+		start = end
 	}
 	return true
+}
+
+// Return the earliest exclusive end of a contiguous fragment or abbreviation.
+// Abbreviation gaps stay within one path component and land at word boundaries
+// or literal punctuation, so FLEC.dll can match FileLockExampleCli.dll. Keep the
+// original field boundaries when matching after a wildcard.
+func smartMatchEnd(query, chars []rune, start int) int {
+	if len(query) == 0 {
+		return start
+	}
+	best := len(chars) + 1
+	for i := start; i+len(query) <= len(chars); i++ {
+		matched := true
+		for j, q := range query {
+			if unicode.ToLower(chars[i+j]) != q {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			best = i + len(query)
+			break
+		}
+	}
+	previous := make([]bool, len(chars))
+	for qi, q := range query {
+		next := make([]bool, len(chars))
+		earlier := false
+		for j := start; j < len(chars) && j < best; j++ {
+			c := chars[j]
+			if c == '/' || c == '\\' {
+				earlier = false
+				continue
+			}
+			punctuation := !unicode.IsLetter(c) && !unicode.IsDigit(c)
+			boundary := j == 0 || !unicode.IsLetter(chars[j-1]) && !unicode.IsDigit(chars[j-1]) || unicode.IsUpper(c) && (unicode.IsLower(chars[j-1]) || j+1 < len(chars) && unicode.IsLower(chars[j+1]))
+			if unicode.ToLower(c) == q {
+				if qi == 0 {
+					next[j] = boundary || punctuation
+				} else {
+					next[j] = j > start && previous[j-1] || (boundary || punctuation) && earlier
+				}
+			}
+			earlier = earlier || previous[j]
+		}
+		previous = next
+	}
+	for j := start; j < best && j < len(chars); j++ {
+		if previous[j] {
+			return j + 1
+		}
+	}
+	if best <= len(chars) {
+		return best
+	}
+	return -1
 }

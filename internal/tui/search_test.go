@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -249,5 +251,59 @@ func TestLongFilenameUsesAvailableWidth(t *testing.T) {
 				t.Fatal("width overflow")
 			}
 		}
+	}
+}
+
+// Exercise the full filter -> matching usages -> details flow with project
+// paths. A search is about files referenced by a process, not just its name.
+func TestProjectFileAbbreviationsCarryIntoDetails(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "SampleProject", "bin", "Debug", "net10.0")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{"FileLockExampleCli.dll", "FileLockExampleCli.deps.json", "FileLockExampleCli.runtimeconfig.json", "OtherLibrary.dll", "appsettings.json"}
+	var usages []model.Usage
+	for _, name := range files {
+		path := filepath.Join(root, name)
+		if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		usages = append(usages, model.Usage{Path: path, Relation: "locked", Access: "read", Lock: "POSIX READ"})
+	}
+	for _, tc := range []struct {
+		query string
+		count int
+	}{
+		{"FLEC", 3}, {"FilLoExaCl", 3}, {"FLEC.", 3}, {"FLEC*", 3}, {"FLEC*.json", 2}, {"FLEC.dll", 1}, {"FLEC*missing", 0},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			for _, locked := range []bool{false, true} {
+				a := searchApp()
+				a.screen = mainScreen
+				a.lockedTab = locked
+				a.result.Processes[0].Name = "dotnet"
+				a.result.Processes[0].Usages = usages
+				a.filter.SetValue(tc.query)
+				a.refilter()
+				count := 0
+				for _, p := range a.visible {
+					count += len(p.Usages)
+				}
+				if count != tc.count {
+					t.Fatalf("locked=%v: got %d usages, want %d", locked, count, tc.count)
+				}
+				if count == 0 {
+					continue
+				}
+				a.updateMain("enter")
+				want := tc.count
+				if locked {
+					want = 1
+				}
+				if a.detailFilter.Value() != tc.query || len(a.usageRows) != want {
+					t.Fatalf("details lost query or counts: %q, %d", a.detailFilter.Value(), len(a.usageRows))
+				}
+			}
+		})
 	}
 }

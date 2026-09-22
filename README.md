@@ -141,13 +141,17 @@ Processes, Locked files, and process details.
 | --- | --- |
 | `dll` | A contiguous fragment, such as the extension in `plugin.dll` |
 | `MIMJWT` | Word or CamelCase prefixes in `Microsoft.IdentityModel.JsonWebTokens.dll` |
-| `micro*dll` | Literal chunks `micro` and `dll`, in that order |
+| `micro*dll` | Chunks `micro` and `dll`, in that order |
+| `FLEC.` / `FLEC*` | Abbreviated stem in `FileLockExampleCli.dll` or `FileLockExampleCli.deps.json` |
+| `FLEC*.json` | Abbreviated stem followed by a `.json` fragment |
 | `*.dll` | A field containing `.dll` |
 | `micro*dll mapped` | Both terms must match |
 
 Plain terms match contiguous fragments or word/CamelCase prefixes. They do not
 match arbitrary scattered letters across a path. `*` matches zero or more
-characters, including path separators. Patterns can match anywhere in a field;
+characters, including path separators. Each chunk between wildcards supports
+the same fragment and abbreviation matching. Punctuation remains literal, so
+`FLEC.` requires a dot after the abbreviated stem. Patterns can match anywhere in a field;
 `*.dll` is not restricted to a filename ending in `.dll`.
 
 Filename and process-name matches rank above directory-only matches. Choosing
