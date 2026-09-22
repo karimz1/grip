@@ -23,6 +23,10 @@ func TestNativeFeatureContract(t *testing.T) {
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
+	target, err := model.NewTarget(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	child := startHelper(t, path)
 	p := scanPID(t, s, path, child.Process.Pid)
 	if !p.MemoryKnown || p.MemoryBytes == 0 {
@@ -33,7 +37,7 @@ func TestNativeFeatureContract(t *testing.T) {
 	}
 	found := false
 	for _, u := range p.Usages {
-		found = found || u.Path == path && u.Lock != ""
+		found = found || target.Matches(u.Path, nil) && u.Lock != ""
 	}
 	if !found {
 		t.Fatalf("native lock evidence missing: %+v", p.Usages)
