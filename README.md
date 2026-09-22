@@ -2,8 +2,9 @@
 [![AwesomeTUI.com](https://img.shields.io/badge/AwesomeTUI.com-Listed-8A2BE2?style=flat-square)](https://awesometui.com/open-file-lock-handle)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/karimz1)
 
-Find the processes using a file or directory, inspect their open files and locks,
-and stop them from an interactive terminal.
+A terminal tool to find locked files and identify which processes are using a
+file or directory on Windows, Linux, and macOS. Inspect open handles, lock
+evidence, and process details, then stop a process when needed.
 
 `oflh` runs on Linux, macOS, and Windows. Start with a path to investigate a busy
 build directory, a DLL that cannot be replaced, or a file that remains in use.
@@ -19,6 +20,7 @@ Open files and confirmed lock evidence are shown separately.
 
 ## Contents
 
+- [Why oflh?](#why-oflh)
 - [Installation](#installation)
 - [Getting started](#getting-started)
 - [Search](#search)
@@ -27,6 +29,21 @@ Open files and confirmed lock evidence are shown separately.
 - [Platform behavior](#platform-behavior)
 - [Testing and development](#testing-and-development)
 - [Project information](#project-information)
+
+## Why oflh?
+
+A build cannot replace a DLL. A file reports "in use by another process." A
+background application still references a directory you want to clean up.
+The useful starting point is often a path, rather than a process name or PID.
+
+`oflh` follows that workflow: choose the file or directory, find its users,
+inspect the evidence, and decide whether to stop a process or its parent. It
+brings file-handle inspection and process control into one keyboard-driven
+interface, with searchable results and a separate view for locked files.
+
+It is useful alongside tools such as `lsof`, `fuser`, and Task Manager. It does
+not bypass operating-system permissions or guarantee that every file lock is
+visible. See [Platform behavior](#platform-behavior) for the detection scope.
 
 ## Installation
 
@@ -95,6 +112,9 @@ oflh "/path/with spaces"      # Quote paths containing spaces
 4. Use **Locked files** (`2`) to narrow the list to files with lock or sharing-conflict evidence.
 5. Press `r` to rescan, or `a` to enable five-second auto-refresh.
 
+In process details, `r` refreshes file usages and metrics; `a` toggles the same
+auto-refresh used by the main view. Search and lock filters remain active.
+
 In process details, `l` toggles **Locks only** without clearing the search. The
 summary counts distinct locked paths among the displayed usages. Lock labels
 appear in muted red. The selected filename appears above the table, and its full
@@ -103,6 +123,14 @@ path appears below it. Use `←` and `→` to page through a long path.
 On wide terminals, the side panel shows the selected process, its ancestry,
 resource usage, and path details. Compact terminals retain resource and parent
 information in the process details view.
+
+### Terminal recommendation
+
+For the best visual experience, use a terminal with true-color and Unicode
+support, with enough width for the process table and side panel. I recommend
+[Ghostty](https://ghostty.org/docs) on macOS and Linux. This is a personal
+recommendation; I am not affiliated with the project. Ghostty is optional, and
+`oflh` does not depend on a particular terminal emulator.
 
 ## Search
 
@@ -167,8 +195,8 @@ terminating a process may release the resources it holds.
 | Main view | `Space` | Select or deselect process |
 | Main view | `Ctrl+A` | Select or deselect all visible processes |
 | Process actions | `k` / `x` | Normal termination / force kill |
-| Main view | `K` / `X` | Act on selected processes |
-| Main view | `r` / `a` | Refresh / toggle auto-refresh |
+| Main view | `K` / `X` | Act on selection, or all filtered processes if none selected |
+| Main view or details | `r` / `a` | Refresh / toggle auto-refresh |
 | Main view | `n` / `p` | Sort by name / PID |
 | Main view | `m` / `c` | Sort by RAM / CPU, highest first |
 | Main view | `i` | Toggle side panel |
@@ -239,7 +267,7 @@ Memory is RSS on Unix and working set on Windows.
 CPU measures a process's share of total machine capacity over the sampling
 interval: 100% means all CPUs. It requires two scans of the same process. A
 follow-up scan runs automatically about one second after the initial results;
-use `a` for regular updates. Unavailable metrics appear as `—`, for example when
+use `a` for regular updates. Unavailable metrics appear as a dash, for example when
 permissions or process exit prevent inspection.
 
 ## Testing and development
@@ -249,7 +277,9 @@ The release workflow uses the same six-platform matrix.
 
 The tests cover real process discovery, memory, two-sample CPU, parent identity,
 platform-specific lock evidence, stale-identity rejection, and force termination
-of an isolated test process. An ordinary open file is checked separately to
+of isolated test processes and a parent discovered through its child. Tests also
+check lock release on refresh, POSIX read/write/range locks, and Windows
+read/write/delete sharing conflicts. An ordinary open file is checked separately to
 ensure it is not reported as locked.
 
 TUI tests run the event loop, renderer, and keyboard decoder through search,

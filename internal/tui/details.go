@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/karimz1/open-file-lock-handle/internal/model"
 )
 
 var frame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8"))
@@ -84,6 +85,46 @@ func (a *App) rebuildUsages(reset bool) {
 	a.usageTable.SetCursor(cursor)
 }
 
+// Replace details from the accepted scan, preserving filters and the selected usage.
+// An absent identity may have exited or stopped referencing the target; do not
+// retain stale locks or attach details to a new process reusing the same PID.
+func (a *App) refreshDetails() {
+	if a.detail == nil {
+		return
+	}
+	var selected model.Usage
+	cursor := a.usageTable.Cursor()
+	if cursor >= 0 && cursor < len(a.usageRows) {
+		selected = a.usageRows[cursor]
+	}
+	for _, p := range a.result.Processes {
+		if p.Identity != a.detail.Identity {
+			continue
+		}
+		copy := p
+		a.detail = &copy
+		a.rebuildUsages(false)
+		for i, u := range a.usageRows {
+			if u == selected {
+				a.usageTable.SetCursor(i)
+				return
+			}
+		}
+		a.pathOffset = 0
+		return
+	}
+	a.detail = nil
+	a.usageRows = nil
+	a.usageTable.SetRows(nil)
+	if a.screen == detailScreen {
+		a.screen = mainScreen
+		a.filtering = false
+		a.detailFilter.Blur()
+		a.status = "Process is no longer present in this scan."
+		a.statusError = false
+	}
+}
+
 // detailsPage keeps metadata, search, column headers and the selected path fixed.
 // Only the Bubbles table's viewport scrolls.
 func (a *App) detailsPage() tea.View {
@@ -98,7 +139,7 @@ func (a *App) detailsPage() tea.View {
 		return v
 	}
 	lines := []string{
-		brand.Render("oflh") + muted.Render("  /  process details"),
+		headerLine(brand.Render("oflh")+muted.Render("  /  process details"), accent.Render(a.refreshLabel()), w),
 		accent.Render(safe(p.Name)) + muted.Render(fmt.Sprintf("   PID %d   ·   %s", p.PID, present(p.User))),
 		muted.Render("EXE  ") + cell(present(p.Executable), w-5),
 		muted.Render("CWD  ") + cell(present(p.CWD), w-5),
@@ -134,6 +175,9 @@ func (a *App) detailsPage() tea.View {
 	positionText := fmt.Sprintf("%d / %d", position, len(a.usageRows))
 	lines = append(lines, headerLine(accent.Render(count), muted.Render(positionText), w))
 	footer := append([]string{muted.Render(strings.Repeat("─", w))}, a.footer()...)
+	if a.statusError {
+		footer = append([]string{danger.Render(cell(a.status, w))}, footer...)
+	}
 	if position > 0 && a.height >= 20 {
 		name := safe(filepath.Base(a.usageRows[position-1].Path))
 		parts := strings.Split(ansi.Hardwrap(name, max(1, w-5), true), "\n")
@@ -210,4 +254,14 @@ func (a *App) searchBox(w int, placeholder string) []string {
 		search = accent.Render("/ ") + safe(input.Value()) + muted.Render("  · Esc clears")
 	}
 	return strings.Split(searchStyle.Width(w).Render(ansi.Truncate(search, max(1, w-2), "…")), "\n")
+}
+
+func (a *App) refreshLabel() string {
+	if a.scanning {
+		return "SCANNING"
+	}
+	if a.autoRefresh {
+		return "LIVE · 5s"
+	}
+	return "MANUAL · r refresh"
 }

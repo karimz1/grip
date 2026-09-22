@@ -1,11 +1,16 @@
 package scanner
 
 import (
+	"bufio"
 	"bytes"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/karimz1/open-file-lock-handle/internal/model"
 )
@@ -14,6 +19,7 @@ import (
 // supply resource/parent data, and distinguish its native lock evidence.
 func TestNativeFeatureContract(t *testing.T) {
 	t.Setenv("OFLH_TEST_LOCK", "posix")
+	t.Setenv("OFLH_TEST_BUSY", "1")
 	s, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -42,8 +48,10 @@ func TestNativeFeatureContract(t *testing.T) {
 	if !found {
 		t.Fatalf("native lock evidence missing: %+v", p.Usages)
 	}
+	// Allow measurable CPU time to accrue on coarse native counters.
+	time.Sleep(250 * time.Millisecond)
 	p = scanPID(t, s, path, child.Process.Pid)
-	if !p.CPUKnown || math.IsNaN(p.CPUPercent) || p.CPUPercent < 0 || p.CPUPercent > 100 {
+	if !p.CPUKnown || math.IsNaN(p.CPUPercent) || p.CPUPercent <= 0 || p.CPUPercent > 100 {
 		t.Fatalf("invalid second CPU sample: %+v", p)
 	}
 	if err := s.Kill(t.Context(), model.Identity{PID: p.PID, Started: p.Started + "-stale"}, true); err == nil {
@@ -76,5 +84,163 @@ func TestNativeOpenFileIsNotALock(t *testing.T) {
 		if u.Lock != "" {
 			t.Fatalf("ordinary open file misreported as locked: %+v", u)
 		}
+	}
+}
+
+// Releasing a handle must remove lock evidence without requiring process exit.
+func TestNativeLockReleaseRefresh(t *testing.T) {
+	t.Setenv("OFLH_TEST_LOCK", "posix")
+	s, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "release.dat")
+	if err := os.WriteFile(path, make([]byte, 4096), 0600); err != nil {
+		t.Fatal(err)
+	}
+	child, input, output, _ := startControlledHelper(t, path)
+	p := scanPID(t, s, path, child.Process.Pid)
+	if !hasLock(*p) {
+		t.Fatal("initial lock not detected")
+	}
+	if _, err := fmt.Fprintln(input, "release"); err != nil {
+		t.Fatal(err)
+	}
+	awaitHelperLine(t, output, "released")
+	target, err := model.NewTarget(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.Scan(t.Context(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range result.Processes {
+		if hasLock(p) {
+			t.Fatalf("released lock remains: %+v", p)
+		}
+	}
+	// The same live process identity is still actionable after releasing its file.
+	if err := s.Kill(t.Context(), p.Identity, true); err != nil {
+		t.Fatal(err)
+	}
+	_ = child.Wait()
+}
+
+func hasLock(p model.Process) bool {
+	for _, u := range p.Usages {
+		if u.Lock != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func awaitHelperLine(t *testing.T, reader *bufio.Reader, want string) {
+	t.Helper()
+	ready := make(chan string, 1)
+	go func() { line, _ := reader.ReadString('\n'); ready <- strings.TrimSpace(line) }()
+	select {
+	case line := <-ready:
+		if line != want {
+			t.Fatalf("helper response %q, want %q", line, want)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("helper response timeout")
+	}
+}
+
+// Use only a disposable parent/child pair, never the test runner's own parent.
+func TestNativeParentTermination(t *testing.T) {
+	t.Setenv("OFLH_TEST_LOCK", "posix")
+	t.Setenv("OFLH_TEST_PARENT", "1")
+	s, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "child-held.dat")
+	if err := os.WriteFile(path, make([]byte, 4096), 0600); err != nil {
+		t.Fatal(err)
+	}
+	parent, _, _, pid := startControlledHelper(t, path)
+	child := scanPID(t, s, path, pid)
+	if child.ParentPID != parent.Process.Pid || len(child.Ancestors) == 0 || child.Ancestors[0].PID != parent.Process.Pid {
+		t.Fatalf("wrong parent chain: %+v", child)
+	}
+	id := model.Identity{PID: child.Ancestors[0].PID, Started: child.Ancestors[0].Started}
+	t.Cleanup(func() { _ = s.Kill(t.Context(), child.Identity, true) })
+	stale := id
+	stale.Started += "-stale"
+	if err := s.Kill(t.Context(), stale, true); err == nil {
+		t.Fatal("stale parent identity accepted")
+	}
+	if err := s.Kill(t.Context(), id, true); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- parent.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("parent did not terminate")
+	}
+	// Child exits on its parent's pipe closing. Poll evidence, not a guessed delay.
+	target, err := model.NewTarget(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		result, err := s.Scan(t.Context(), target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		locked := false
+		for _, p := range result.Processes {
+			locked = locked || hasLock(p)
+		}
+		if !locked {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child lock remained after parent pipe closed")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := s.Kill(t.Context(), id, true); err == nil {
+		t.Fatal("exited parent identity accepted")
+	}
+}
+
+func TestNativeLockModes(t *testing.T) {
+	for _, mode := range []string{"read", "write", "range"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("OFLH_TEST_LOCK", mode)
+			s, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "mode.dat")
+			if err := os.WriteFile(path, make([]byte, 4096), 0600); err != nil {
+				t.Fatal(err)
+			}
+			child := startHelper(t, path)
+			p := scanPID(t, s, path, child.Process.Pid)
+			want := mode
+			if runtime.GOOS == "windows" {
+				if mode == "range" {
+					want = "delete"
+				}
+				want += " denied"
+			} else if mode == "range" {
+				want = "128"
+			}
+			for _, u := range p.Usages {
+				if u.Lock != "" && strings.Contains(strings.ToLower(u.Lock), want) {
+					return
+				}
+			}
+			t.Fatalf("expected %s evidence, got %+v", want, p.Usages)
+		})
 	}
 }
