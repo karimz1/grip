@@ -20,10 +20,12 @@ import (
 // libproc is part of macOS. purego calls it without an external executable or cgo.
 // Structure sizes/offsets are the 64-bit ABI in XNU's bsd/sys/proc_info.h.
 type native struct {
-	listPIDs func(unsafe.Pointer, int32) int32
-	pidInfo  func(int32, int32, uint64, unsafe.Pointer, int32) int32
-	fdInfo   func(int32, int32, int32, unsafe.Pointer, int32) int32
-	pidPath  func(int32, unsafe.Pointer, uint32) int32
+	resources resourceSampler
+	pidRusage func(int32, int32, unsafe.Pointer) int32
+	listPIDs  func(unsafe.Pointer, int32) int32
+	pidInfo   func(int32, int32, uint64, unsafe.Pointer, int32) int32
+	fdInfo    func(int32, int32, int32, unsafe.Pointer, int32) int32
+	pidPath   func(int32, unsafe.Pointer, uint32) int32
 }
 
 func New() (Scanner, error) {
@@ -36,7 +38,7 @@ func New() (Scanner, error) {
 		name string
 		fn   any
 	}{
-		{"proc_listallpids", &s.listPIDs}, {"proc_pidinfo", &s.pidInfo},
+		{"proc_pid_rusage", &s.pidRusage}, {"proc_listallpids", &s.listPIDs}, {"proc_pidinfo", &s.pidInfo},
 		{"proc_pidfdinfo", &s.fdInfo}, {"proc_pidpath", &s.pidPath},
 	} {
 		addr, err := purego.Dlsym(lib, binding.name)
@@ -64,6 +66,7 @@ func (s *native) process(pid int) (model.Process, error) {
 		return model.Process{}, ErrChanged
 	}
 	p := model.Process{Identity: model.Identity{PID: pid, Started: fmt.Sprintf("%d:%d", u64(b[120:]), u64(b[128:]))}, Name: cstring(b[64:96]), User: strconv.FormatUint(uint64(u32(b[20:])), 10)}
+	p.ParentPID = int(u32(b[16:]))
 	if p.Name == "" {
 		p.Name = cstring(b[48:64])
 	}
@@ -80,7 +83,7 @@ func (s *native) identity(pid int) (model.Identity, error) {
 }
 
 func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error) {
-	r := model.Result{}
+	r := model.Result{LockDetection: true, Warnings: []string{"macOS: lock queries report the first POSIX conflict per readable file; flock-only locks and additional ranges may not be visible."}}
 	if err := ctx.Err(); err != nil {
 		return r, err
 	}
@@ -129,6 +132,9 @@ func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error)
 		partial := false
 		add := func(path, relation, access string) {
 			if path == "" {
+				return
+			}
+			if t.Directory && !model.Contains(t.Path, path) {
 				return
 			}
 			info, _ := os.Stat(path)
@@ -223,8 +229,10 @@ func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error)
 	if limited > 0 {
 		r.Warnings = append(r.Warnings, fmt.Sprintf("%d processes could not be fully inspected (permissions or process changes).", limited))
 	}
+	s.detectLocks(ctx, &r)
 	r.Normalize()
-	return r, nil
+	s.enrich(ctx, &r)
+	return r, ctx.Err()
 }
 
 func (s *native) Kill(ctx context.Context, id model.Identity, force bool) error {

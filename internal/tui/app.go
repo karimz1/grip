@@ -199,6 +199,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.sent == 0 {
 			return a, nil
 		}
+		// Once a termination request succeeds, stop displaying the captured
+		// tree. The refreshed results become the navigation source again.
+		a.ancestorSource = nil
+		a.ancestorCursor = -1
+		a.parentAction = false
 		return a, tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return refreshMsg{} })
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {

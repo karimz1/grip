@@ -134,3 +134,36 @@ func TestShortTreeKeepsSelectedAndCurrentNodes(t *testing.T) {
 		}
 	}
 }
+
+func TestSuccessfulTerminationLeavesTreeFocus(t *testing.T) {
+	for _, parent := range []bool{false, true} {
+		a := ancestryApp()
+		a.backend = &recordingScanner{}
+		if parent {
+			a.updateMain("up")
+		}
+		a.updateMain("k")
+		a.updateConfirm("tab")
+		cmd := a.updateConfirm("enter")
+		if cmd == nil {
+			t.Fatal("missing confirmed termination command")
+		}
+		_, refresh := a.Update(cmd())
+		if refresh == nil || a.ancestorSource != nil || a.parentAction || a.screen != mainScreen {
+			t.Fatal("successful termination must release tree focus and refresh")
+		}
+		a.Update(scanMsg{generation: a.generation, result: model.Result{}})
+		view := ansi.Strip(a.View().Content)
+		if strings.Contains(view, "ANCESTRY · focused") || strings.Contains(view, "ACTION TARGET") || strings.Contains(view, "test-app (42)") {
+			t.Fatalf("stale process tree survived refresh: %s", view)
+		}
+	}
+}
+
+func TestFailedTerminationKeepsTreeForReview(t *testing.T) {
+	a := ancestryApp()
+	_, cmd := a.Update(killMsg{failures: []string{"permission denied"}})
+	if cmd != nil || a.ancestorSource == nil || !a.statusError {
+		t.Fatal("failure should keep the target available for review")
+	}
+}

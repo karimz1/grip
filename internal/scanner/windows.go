@@ -16,7 +16,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-type native struct{}
+type native struct{ resources resourceSampler }
 
 func New() (Scanner, error) { return &native{}, nil }
 
@@ -141,11 +141,12 @@ func rmUsers(paths []string) ([]rmInfo, error) {
 }
 
 func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error) {
-	r := model.Result{Warnings: []string{"Windows: CWD, directory handles and deleted files are not visible. Restart Manager does not expose access modes or prove a lock."}}
+	r := model.Result{LockDetection: true, Warnings: []string{"Windows: CWD, directory handles and deleted files are not visible. Sharing conflicts are confirmed per file; Restart Manager lists resource users, not proven lock owners. Byte-range locks are not enumerated."}}
 	if err := ctx.Err(); err != nil {
 		return r, err
 	}
 	limited := 0
+	parents := make(map[int]int)
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
 		return r, err
@@ -157,6 +158,7 @@ func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error)
 			return r, err
 		}
 		pid := int(entry.ProcessID)
+		parents[pid] = int(entry.ParentProcessID)
 		if pid <= 0 || pid == os.Getpid() {
 			continue
 		}
@@ -247,6 +249,7 @@ func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error)
 			}
 			return correlate(paths[mid:])
 		}
+		conflict := sharingConflict(paths[0])
 		for _, app := range apps {
 			pid := int(app.Process.PID)
 			if pid == os.Getpid() {
@@ -261,6 +264,9 @@ func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error)
 				continue
 			}
 			p.Usages = []model.Usage{{Path: paths[0], Relation: "restart manager", Access: "unknown"}}
+			if conflict != "" {
+				p.Usages = append(p.Usages, model.Usage{Path: paths[0], Relation: "locked", Access: "unknown", Lock: conflict})
+			}
 			r.Processes = append(r.Processes, p)
 		}
 		return nil
@@ -274,7 +280,8 @@ func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error)
 		r.Warnings = append(r.Warnings, fmt.Sprintf("%d process/resource inspections were unavailable (permissions or changes).", limited))
 	}
 	r.Normalize()
-	return r, nil
+	s.enrich(ctx, &r, parents)
+	return r, ctx.Err()
 }
 
 func (s *native) Kill(ctx context.Context, id model.Identity, force bool) error {
