@@ -49,3 +49,54 @@ These are headless terminal-stream tests, not claims of visual validation in
 every terminal emulator. Windows/macOS runtime verification requires their native
 CI jobs; cross-compilation alone is insufficient. The README documents each OS's
 lock-evidence scope. Never replace unknown information with invented lock owners.
+
+## Native lock fixture
+
+Scanner integration tests use a small native C program located at:
+
+    internal/scanner/testdata/lockfixture/main.c
+
+The fixture creates real operating-system file locks so the scanner can be
+tested against native locking behavior rather than mocks.
+
+The implementation uses the platform's native locking mechanism:
+
+- Windows: `CreateFile` and `LockFileEx`
+- macOS: POSIX `fcntl`
+- Linux: POSIX `fcntl`
+
+The fixture supports several modes:
+
+    lockfixture open  <file>
+    lockfixture read  <file>
+    lockfixture write <file>
+    lockfixture range <file> <start> <length>
+
+`open` keeps a file handle open without acquiring a byte-range lock.
+
+`read` acquires a shared/read lock over the file.
+
+`write` acquires an exclusive/write lock over the file.
+
+`range` acquires an exclusive/write lock over a specific byte range.
+
+The Go integration tests compile the fixture into a temporary directory and
+start it as a child process. The fixture reports when the requested lock is
+ready, allowing the scanner to inspect the live process and verify the
+detected lock state.
+
+Compiled fixture binaries are temporary test artifacts and are not committed
+to the repository.
+
+### Requirements
+
+Running the native integration tests requires a C compiler:
+
+- macOS: Clang (`cc`), included with Xcode Command Line Tools
+- Linux: GCC or Clang (`cc`)
+- Windows: MSVC (`cl`) or MinGW GCC
+
+The fixture intentionally uses native OS locking semantics. Lock behavior is
+therefore not expected to be identical across platforms. In particular,
+POSIX locks on macOS and Linux are advisory and do not necessarily prevent
+unrelated processes from modifying, renaming, or deleting a file.
