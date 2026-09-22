@@ -1,4 +1,5 @@
 # Open File Lock Handle (`oflh`)
+[![CI](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml/badge.svg)](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml)
 [![AwesomeTUI.com](https://img.shields.io/badge/AwesomeTUI.com-Listed-8A2BE2?style=flat-square)](https://awesometui.com/open-file-lock-handle)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/karimz1)
 
@@ -20,15 +21,26 @@ Open files and confirmed lock evidence are shown separately.
 
 ## Contents
 
-- [Why oflh?](#why-oflh)
-- [Installation](#installation)
-- [Getting started](#getting-started)
-- [Search](#search)
-- [Process actions](#process-actions)
-- [Keyboard reference](#keyboard-reference)
-- [Platform behavior](#platform-behavior)
-- [Testing and development](#testing-and-development)
-- [Project information](#project-information)
+- [Open File Lock Handle (`oflh`)](#open-file-lock-handle-oflh)
+  - [Contents](#contents)
+  - [Why oflh?](#why-oflh)
+    - [What makes it different](#what-makes-it-different)
+  - [Installation](#installation)
+    - [Homebrew](#homebrew)
+    - [Standalone binaries](#standalone-binaries)
+    - [Build from source](#build-from-source)
+  - [Getting started](#getting-started)
+    - [Terminal recommendation](#terminal-recommendation)
+  - [Search](#search)
+  - [Process actions](#process-actions)
+  - [Keyboard reference](#keyboard-reference)
+  - [Platform behavior](#platform-behavior)
+    - [File discovery and termination](#file-discovery-and-termination)
+    - [Lock evidence](#lock-evidence)
+    - [Access modes](#access-modes)
+    - [CPU, memory, and ancestry](#cpu-memory-and-ancestry)
+  - [Testing and development](#testing-and-development)
+  - [Project information](#project-information)
 
 ## Why oflh?
 

@@ -54,14 +54,16 @@ lock-evidence scope. Never replace unknown information with invented lock owners
 
 Scanner integration tests use a small native C program located at:
 
-    internal/scanner/testdata/lockfixture/main.c
+    internal/scanner/testdata/lockfixture/lock-fixture.c
 
 The fixture creates real operating-system file locks so the scanner can be
-tested against native locking behavior rather than mocks.
+tested against native locking behavior rather than mocks. By completely bypassing 
+the Go runtime and acquiring locks via authentic native OS interfaces, we guarantee
+that the scanner reliably discovers locks held by real-world third-party processes.
 
 The implementation uses the platform's native locking mechanism:
 
-- Windows: `CreateFile` and `LockFileEx`
+- Windows: `CreateFile` (with sharing denial) and `LockFileEx`
 - macOS: POSIX `fcntl`
 - Linux: POSIX `fcntl`
 
@@ -81,9 +83,10 @@ The fixture supports several modes:
 `range` acquires an exclusive/write lock over a specific byte range.
 
 The Go integration tests compile the fixture into a temporary directory and
-start it as a child process. The fixture reports when the requested lock is
-ready, allowing the scanner to inspect the live process and verify the
-detected lock state.
+start it as a child process. The test runner passes standard input via a pipe 
+to intentionally keep the C program alive. The fixture reports when the requested 
+lock is ready, allowing the scanner to inspect the live process and definitively 
+verify the detected lock state.
 
 Compiled fixture binaries are temporary test artifacts and are not committed
 to the repository.
