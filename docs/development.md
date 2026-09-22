@@ -30,7 +30,9 @@ workflow depends on the same matrix. No core feature test is skipped by OS.
   decoder with pipe input. It exercises search inheritance, lock filtering, tree
   focus, confirmation, post-termination focus reset, tab switching, select-all,
   resize and quit. Termination uses an isolated fake backend.
-- `TestProgramSmokeNativeStartup` runs the real native scanner inside the TUI.
+- `TestProgramSmokeNativeStartup` starts the real native scanner inside the TUI
+  and verifies that rendering and quit remain responsive during a scan. Completed
+  native scans are validated independently by the feature contract.
 - Both TUI smoke tests repeat three times per matrix runner. Unit tests, vet,
   standalone builds and packaging checks also run. The race detector runs where
   Go supports it (currently excluded only on Windows arm64).

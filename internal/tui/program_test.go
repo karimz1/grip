@@ -93,7 +93,13 @@ func runProgramSmoke(t *testing.T, backend scanner.Scanner, interact bool) {
 			t.Fatal(err)
 		}
 	}
-	state := until(func(s smokeSnapshot) bool { return !s.scanning })
+	state := snapshot()
+	if interact {
+		state = until(func(s smokeSnapshot) bool { return !s.scanning })
+	}
+	// Native startup checks that the UI can render and quit even while a
+	// system-wide scan is in flight. NativeFeatureContract separately waits
+	// for completed scans and validates their evidence on every OS.
 	if !strings.Contains(state.view, "1 Processes") {
 		t.Fatalf("main view missing: %s", state.view)
 	}

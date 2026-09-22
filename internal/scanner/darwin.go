@@ -134,6 +134,9 @@ func (s *native) Scan(ctx context.Context, t model.Target) (model.Result, error)
 			if path == "" {
 				return
 			}
+			if t.Directory && !model.Contains(t.Path, path) {
+				return
+			}
 			info, _ := os.Stat(path)
 			if t.Matches(path, info) {
 				p.Usages = append(p.Usages, model.Usage{Path: path, Relation: relation, Access: access})

@@ -50,7 +50,7 @@ jobs:
       - name: Unit and native scanner integration tests
         env:
           CGO_ENABLED: '0'
-        run: go test -count=1 -timeout=5m ./...
+        run: go test -p=1 -count=1 -timeout=5m ./...
       - name: Native feature contract (metrics, ancestry, locks and safe termination)
         env:
           CGO_ENABLED: '0'
@@ -63,7 +63,7 @@ jobs:
         if: matrix.race
         env:
           CGO_ENABLED: '1'
-        run: go test -race -count=1 -timeout=5m ./...
+        run: go test -race -p=1 -count=1 -timeout=5m ./...
       - name: Static analysis
         run: go vet ./...
       - name: Packaging tests
