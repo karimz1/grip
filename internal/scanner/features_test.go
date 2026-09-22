@@ -379,6 +379,12 @@ func TestNativeExternalLockFixture(t *testing.T) {
 			var stderr bytes.Buffer
 			cmd.Stderr = &stderr
 
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				t.Fatalf("native lock fixture stdin: %v", err)
+			}
+			t.Cleanup(func() { stdin.Close() })
+
 			if err := cmd.Start(); err != nil {
 				t.Fatalf("start native lock fixture: %v", err)
 			}
