@@ -118,14 +118,20 @@ Contributor documentation:
 | `?` | Help |
 | `q` / `Ctrl+C` | Back / quit |
 
-The **Locked files** tab lists confirmed Linux kernel locks with the file path and
-owning process. Press `Enter` for the full path, lock type, read/write mode and byte
-range. Ordinary open files are excluded. Detection uses Linux
-[`/proc/PID/fdinfo`](https://cdn.kernel.org/doc/html/latest/filesystems/proc.html)
-and is limited by permissions and scan timing; advisory locks do not necessarily
-prevent other applications from accessing the file. macOS and Windows currently
-show an explicit unsupported message in this tab; file usage remains available
-in **Processes**.
+The **Locked files** tab shows platform-specific evidence with the file path and
+associated process. Press `Enter` for full paths and lock details. Ordinary open
+files are excluded unless there is additional lock or sharing-conflict evidence.
+
+| Platform | Lock evidence | Limits |
+| --- | --- | --- |
+| Linux | Held FLOCK, POSIX and OFD locks from `/proc/PID/fdinfo` | Permissions, namespaces and scan timing limit visibility |
+| macOS | Existing POSIX byte-range locks queried with `F_GETLK` | First conflicting range per readable file; flock-only locks and additional ranges may be missed |
+| Windows | Confirmed read/write/delete sharing conflicts, correlated with Restart Manager resource users | Users are explicitly labeled **owner unverified**; byte-range locks are not enumerated |
+
+Windows entries confirm a sharing conflict on the file, not which reported user
+imposed it. Permission-denied errors alone are never classified as locks. Lock
+queries do not modify file contents. Advisory locks need not prevent ordinary
+read/write access.
 
 In the process details view, `/` searches filenames, paths, DLLs, relations, and access
 modes. Press `l` in details to toggle **Locks only** for that process without
@@ -154,13 +160,13 @@ to see all usages again. Process-only terms, such as the PID, stay in the main
 search. Selections survive filtering; the confirmation lists all selected targets,
 including those currently hidden. `Ctrl+A` toggles only the visible results.
 
-Wide terminals show a process inspector beside the table. On Linux it includes
-up to eight observed ancestors and resident memory (RSS). CPU usage becomes
+Wide terminals show a process inspector beside the table. Linux, macOS and Windows
+collect up to eight observed ancestors and resident memory (RSS / working set). CPU usage becomes
 available after two scans of the same process; a follow-up scan runs automatically
 about one second after the initial results. It measures its share of total
 machine CPU capacity over that interval (100% means all CPUs). Enable `a` for
-regular updates. Missing metrics show `—`; other platforms currently do not
-collect these metrics or ancestry. The panel hides automatically on compact
+regular updates. Missing metrics show `—` when permissions or process exit prevent
+inspection. The panel hides automatically on compact
 terminals; process details retain resource and parent information.
 
 Tab focuses the existing nested ancestry tree, initially highlighting the current
@@ -171,7 +177,8 @@ The selected ancestry snapshot remains fixed across refreshes; its captured
 process identity is revalidated before termination. Protected processes and
 ancestors without an available identity cannot be stopped. Parent termination
 can close its application and affect child processes; it does not recursively
-send termination to the whole tree.
+send termination to the whole tree. A successful termination request releases tree
+focus and clears its captured snapshot before refreshing the results.
 
 Every termination requires confirmation, with **Cancel selected by default**.
 

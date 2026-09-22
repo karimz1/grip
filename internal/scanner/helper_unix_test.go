@@ -18,6 +18,13 @@ func holdTestFile(path string) (func(), error) {
 			return nil, err
 		}
 	}
+	if os.Getenv("OFLH_TEST_LOCK") == "posix" {
+		lock := unix.Flock_t{Type: unix.F_WRLCK, Whence: 0, Start: 0, Len: 0}
+		if err := unix.FcntlFlock(f.Fd(), unix.F_SETLK, &lock); err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
 	m, err := unix.Mmap(int(f.Fd()), 0, 4096, unix.PROT_READ, unix.MAP_PRIVATE)
 	if err != nil {
 		f.Close()
