@@ -14,7 +14,7 @@ Open files and confirmed lock evidence are shown separately.
   <img src="images/demo.gif" alt="oflh terminal interface showing processes and file usage" width="100%">
 </a>
 
-[Watch the terminal recording](https://asciinema.org/a/1265936).
+[Watch the terminal recording](https://asciinema.org/a/mWdEJtgrWFVyN2IS).
 
 
 ## Contents
