@@ -1,4 +1,6 @@
 # Open File Lock Handle (`oflh`)
+[![AwesomeTUI.com](https://img.shields.io/badge/AwesomeTUI.com-Listed-8A2BE2?style=flat-square)](https://awesometui.com/open-file-lock-handle)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/karimz1)
 
 Find the processes using a file or directory, inspect their open files and locks,
 and stop them from an interactive terminal.
@@ -14,15 +16,6 @@ Open files and confirmed lock evidence are shown separately.
 
 [Watch the terminal recording](https://asciinema.org/a/1265936).
 
-<p>
-  <a href="https://buymeacoffee.com/karimz1">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="56" />
-  </a>
-</p>
-
-## Open File Lock Handle (oflh) got Listed / Featured on:
-
-[![AwesomeTUI.com](https://img.shields.io/badge/AwesomeTUI.com-Listed-8A2BE2?style=flat-square)](https://awesometui.com/open-file-lock-handle)
 
 ## Contents
 
