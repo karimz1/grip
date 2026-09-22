@@ -154,24 +154,22 @@ static int run_windows(
     unsigned long long start,
     unsigned long long length)
 {
-    DWORD shareMode;
+    DWORD shareMode =
+        FILE_SHARE_READ |
+        FILE_SHARE_WRITE |
+        FILE_SHARE_DELETE;
 
-    /*
-     * "open" demonstrates a normal open handle.
-     *
-     * Other modes deliberately deny sharing so tools can observe
-     * a strong Windows sharing restriction as well as LockFileEx.
-     */
-    if (strcmp(mode, "open") == 0)
+    if (strcmp(mode, "read") == 0)
     {
-        shareMode =
-            FILE_SHARE_READ |
-            FILE_SHARE_WRITE |
-            FILE_SHARE_DELETE;
+        shareMode &= ~FILE_SHARE_READ;
     }
-    else
+    else if (strcmp(mode, "write") == 0)
     {
-        shareMode = 0;
+        shareMode &= ~FILE_SHARE_WRITE;
+    }
+    else if (strcmp(mode, "range") == 0)
+    {
+        shareMode &= ~FILE_SHARE_DELETE;
     }
 
     HANDLE file = CreateFileA(
