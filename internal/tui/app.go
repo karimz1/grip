@@ -170,17 +170,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		// Keep resource values fresh even when details were opened before the
-		// follow-up sample, without replacing the user's usage snapshot/search.
-		if a.detail != nil {
-			for _, p := range a.result.Processes {
-				if p.Identity == a.detail.Identity {
-					a.detail.CPUPercent, a.detail.CPUKnown = p.CPUPercent, p.CPUKnown
-					a.detail.MemoryBytes, a.detail.MemoryKnown = p.MemoryBytes, p.MemoryKnown
-					break
-				}
-			}
-		}
+		a.refreshDetails()
 		if !a.cpuWarmupDone {
 			for _, p := range a.result.Processes {
 				if p.MemoryKnown && !p.CPUKnown {
@@ -485,6 +475,8 @@ func (a *App) updateFilterInput(msg tea.Msg) tea.Cmd {
 
 func (a *App) updateDetails(key string) tea.Cmd {
 	switch key {
+	case "r", "a":
+		return a.updateMain(key)
 	case "l":
 		a.detailLocksOnly = !a.detailLocksOnly
 		a.rebuildUsages(true)

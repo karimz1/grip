@@ -80,3 +80,68 @@ func TestSmartFileSearchDoesNotSkipThroughDirectories(t *testing.T) {
 		t.Fatal("filename hits must rank first")
 	}
 }
+
+func TestAbbreviationsWithPunctuationAndWildcards(t *testing.T) {
+	for _, prefix := range []string{"/build/", `C:\build\`} {
+		for _, name := range []string{"FileLockExampleCli.dll", "FileLockExampleCli.deps.json", "FileLockExampleCli.runtimeconfig.json"} {
+			u := Usage{Path: prefix + name}
+			for _, query := range []string{"FLEC", "FilLoExaCl", "FLEC.", "FLEC*", "*FLEC*", "FLEC.*", "FilLoExaCl.*", "flec**"} {
+				if !u.MatchesFilter(query) {
+					t.Errorf("%q did not match %q", query, u.Path)
+				}
+			}
+			for _, query := range []string{"FLEC.dll", "FLEC*.dll"} {
+				if u.MatchesFilter(query) != (name == "FileLockExampleCli.dll") {
+					t.Errorf("incorrect extension filtering: %q in %q", query, u.Path)
+				}
+			}
+			if u.MatchesFilter("FLEC*json") != (name != "FileLockExampleCli.dll") {
+				t.Errorf("incorrect JSON filtering: %s", u.Path)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		field, query string
+		want         bool
+	}{
+		{"FileLockExampleCli", "FLEC.", false},
+		{"FileLockExampleCli", "FLEC*", true},
+		{"FileLockExampleCli.dll", "FLEC*exe", false},
+		{"FileLockExampleCli.dll", "dll*FLEC", false},
+		{"FileLockExampleCli.dll", "FLEC*FLEC", false},
+		{"/File/Lock/Example/Cli.dll", "FLEC*", false},
+		{"/FileLock/ExampleCli.dll", "FL*EC.dll", true},
+		{"ÜberFileLock.dll", "ÜFL.*", true},
+		{"FileLockExampleCli.deps.json", "FLEC.d.j", true},
+	} {
+		if got := matchesTerm(tc.query, tc.field); got != tc.want {
+			t.Errorf("%q in %q = %v, want %v", tc.query, tc.field, got, tc.want)
+		}
+	}
+}
+
+func TestGeneralAbbreviatedStems(t *testing.T) {
+	for _, tc := range []struct{ stem, short, long string }{
+		{"HttpServerFactory", "HSF", "HtSerFa"},
+		{"XMLDocumentReader", "XDR", "XMLDocRea"},
+		{"customer_order_service", "cos", "custordser"},
+		{"ÜberFileReader", "ÜFR", "ÜberFiRea"},
+	} {
+		for _, extension := range []string{".dll", ".deps.json", ".cs"} {
+			field := "/project/build/" + tc.stem + extension
+			for _, q := range []string{tc.short, tc.long} {
+				for _, pattern := range []string{q, q + ".", q + "*", q + ".*", q + "*" + extension} {
+					if !(Usage{Path: field}).MatchesFilter(pattern) {
+						t.Errorf("%q failed for %q", pattern, field)
+					}
+				}
+				if !(Process{Name: tc.stem}).MatchesFilter(q + "*") {
+					t.Errorf("process abbreviation failed: %s", tc.stem)
+				}
+				if (Usage{Path: field}).MatchesFilter(q + "*.missing") {
+					t.Errorf("matched absent extension: %s", field)
+				}
+			}
+		}
+	}
+}

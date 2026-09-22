@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,18 +27,68 @@ func TestScannerHelperProcess(t *testing.T) {
 	if err := os.Chdir(filepath.Dir(path)); err != nil {
 		os.Exit(2)
 	}
+	if os.Getenv("OFLH_TEST_PARENT") == "1" {
+		child := exec.Command(os.Args[0], "-test.run=^TestScannerHelperProcess$")
+		child.Env = append(os.Environ(), "OFLH_TEST_PARENT=0")
+		input, err := child.StdinPipe()
+		if err != nil {
+			os.Exit(4)
+		}
+		output, err := child.StdoutPipe()
+		if err != nil {
+			os.Exit(4)
+		}
+		child.Stderr = os.Stderr
+		if child.Start() != nil {
+			os.Exit(4)
+		}
+		line, _ := bufio.NewReader(output).ReadString('\n')
+		if strings.TrimSpace(line) != "ready" {
+			os.Exit(4)
+		}
+		fmt.Printf("ready %d\n", child.Process.Pid)
+		_, _ = io.Copy(input, os.Stdin)
+		input.Close()
+		_ = child.Wait()
+		os.Exit(0)
+	}
+	if os.Getenv("OFLH_TEST_BUSY") == "1" {
+		go func() {
+			var counter atomic.Uint64
+			for {
+				counter.Add(1)
+			}
+		}()
+	}
 	closeFile, err := holdTestFile(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(3)
 	}
-	defer closeFile()
 	fmt.Println("ready")
-	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	input := bufio.NewScanner(os.Stdin)
+	for input.Scan() {
+		if input.Text() == "release" && closeFile != nil {
+			closeFile()
+			closeFile = nil
+			fmt.Println("released")
+			continue
+		}
+		break
+	}
+	if closeFile != nil {
+		closeFile()
+	}
 	os.Exit(0)
 }
 
 func startHelper(t *testing.T, path string) *exec.Cmd {
+	t.Helper()
+	cmd, _, _, _ := startControlledHelper(t, path)
+	return cmd
+}
+
+func startControlledHelper(t *testing.T, path string) (*exec.Cmd, io.WriteCloser, *bufio.Reader, int) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestScannerHelperProcess$")
 	cmd.Env = append(os.Environ(), "OFLH_SCANNER_HELPER=1", "OFLH_SCANNER_FILE="+path)
@@ -58,17 +111,26 @@ func startHelper(t *testing.T, path string) *exec.Cmd {
 			cmd.Wait()
 		}
 	})
+	reader := bufio.NewReader(out)
+	pid := cmd.Process.Pid
 	ready := make(chan string, 1)
-	go func() { line, _ := bufio.NewReader(out).ReadString('\n'); ready <- line }()
+	go func() { line, _ := reader.ReadString('\n'); ready <- line }()
 	select {
 	case line := <-ready:
-		if strings.TrimSpace(line) != "ready" {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != "ready" {
 			t.Fatalf("helper failed: %q", line)
+		}
+		if len(fields) == 2 {
+			pid, err = strconv.Atoi(fields[1])
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	case <-time.After(20 * time.Second):
 		t.Fatal("helper readiness timed out")
 	}
-	return cmd
+	return cmd, in, reader, pid
 }
 
 func scanPID(t *testing.T, s Scanner, path string, pid int) *model.Process {

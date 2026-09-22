@@ -21,15 +21,23 @@ CI runs natively on Linux, Windows and macOS, on both amd64 and arm64. The relea
 workflow depends on the same matrix. No core feature test is skipped by OS.
 
 - `TestNativeFeatureContract` starts a pipe-synchronized child, checks discovery,
-  RAM, two-sample CPU, actionable parent identity, and the backend's lock evidence.
+  RAM, positive two-sample CPU from a busy helper, actionable parent identity, and the backend's lock evidence.
   It rejects a stale identity, stops only the test child, and verifies unchanged
   file contents.
+- `TestNativeLockModes` covers POSIX read, write, and bounded-range locks on
+  Unix, and read, write, and delete sharing conflicts on Windows.
+- `TestNativeLockReleaseRefresh` releases a file while its helper stays alive,
+  then verifies that another scan removes the lock evidence.
+- `TestNativeParentTermination` discovers an isolated helper's parent, rejects a
+  stale parent identity, force terminates the real parent, and verifies that the
+  child releases its lock when the parent's control pipe closes. This tests the
+  helper's lifecycle, not a general guarantee that stopping parents stops children.
 - `TestNativeOpenFileIsNotALock` verifies that a shared ordinary open file is not
   mislabeled as a lock.
 - `TestProgramSmokeWorkflow` runs Bubble Tea's event loop, renderer and keyboard
   decoder with pipe input. It exercises search inheritance, lock filtering, tree
   focus, confirmation, post-termination focus reset, tab switching, select-all,
-  resize and quit. Termination uses an isolated fake backend.
+  details refresh/auto-refresh, resize and quit. Termination uses an isolated fake backend.
 - `TestProgramSmokeNativeStartup` starts the real native scanner inside the TUI
   and verifies that rendering and quit remain responsive during a scan. Completed
   native scans are validated independently by the feature contract.

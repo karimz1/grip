@@ -54,7 +54,7 @@ jobs:
       - name: Native feature contract (metrics, ancestry, locks and safe termination)
         env:
           CGO_ENABLED: '0'
-        run: go test -v -count=1 -timeout=3m ./internal/scanner -run '^TestNative(FeatureContract|OpenFileIsNotALock)$'
+        run: go test -v -count=1 -timeout=5m ./internal/scanner -run '^TestNative(FeatureContract|OpenFileIsNotALock|LockReleaseRefresh|ParentTermination|LockModes)$'
       - name: Real TUI startup and keyboard workflow
         env:
           CGO_ENABLED: '0'

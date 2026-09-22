@@ -113,6 +113,12 @@ func runProgramSmoke(t *testing.T, backend scanner.Scanner, interact bool) {
 		}
 		key("l")
 		until(func(s smokeSnapshot) bool { return strings.Contains(s.view, "LOCKS ONLY") })
+		key("r")
+		until(func(s smokeSnapshot) bool { return s.details && !s.scanning && s.rows == 1 })
+		key("a")
+		until(func(s smokeSnapshot) bool { return strings.Contains(s.view, "LIVE") })
+		key("a")
+		until(func(s smokeSnapshot) bool { return strings.Contains(s.view, "MANUAL") })
 		key("q")
 		until(func(s smokeSnapshot) bool { return !s.details })
 		key("\t")

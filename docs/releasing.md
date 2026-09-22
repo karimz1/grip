@@ -13,7 +13,11 @@ Every push to `main` and every pull request runs the following matrix:
 | macOS 15 Intel | darwin/amd64 | Yes |
 | macOS 15 Apple Silicon | darwin/arm64 | Yes |
 | Windows 2025 x86-64 | windows/amd64 | Yes |
-| Windows 11 ARM | windows/arm64 | No (Go does not support it) |
+| Windows 11 ARM64 | windows/arm64 | Unavailable for this target; native tests and builds run |
+
+Windows ARM64 is built and tested natively on GitHub's `windows-11-arm` runner.
+Only the [Go race detector](https://go.dev/doc/articles/race_detector) is unavailable
+for this target. Release binaries use `CGO_ENABLED=0`.
 
 Tests start child processes using an explicit pipe handshake. They cover an open file
 with spaces and Unicode, directory descendants, process metadata, cancellation, stale
@@ -77,18 +81,3 @@ available via `brew install karimz1/tap/oflh` on Linux or macOS, Intel or ARM.
 - [Windows resource users](https://learn.microsoft.com/en-us/windows/win32/api/restartmanager/nf-restartmanager-rmgetlist)
 - [Windows Toolhelp snapshots](https://learn.microsoft.com/en-us/windows/win32/api/tlhelp32/nf-tlhelp32-createtoolhelp32snapshot)
 - [Homebrew taps](https://docs.brew.sh/Taps)
-
-## One-time tap trigger setup
-
-In this source repository, add an Actions secret named `HOMEBREW_TAP_TOKEN`.
-Use a fine-grained GitHub token scoped only to `karimz1/homebrew-tap` with
-**Actions: Read and write** permission. The tap commits its own formula with its
-built-in `GITHUB_TOKEN`; the dispatch token does not need Contents write permission.
-
-Without this secret, the dispatch job fails with an explicit setup message. You can
-still run `gh workflow run update-oflh.yml --repo karimz1/homebrew-tap`; a daily
-fallback also remains. Prereleases never update the stable formula.
-
-Until the first renamed stable release is published, the tap keeps the existing
-`grip` formula and offers `oflh` through `brew install --HEAD karimz1/tap/oflh`.
-Old releases are immutable historical downloads; they are not repackaged.
