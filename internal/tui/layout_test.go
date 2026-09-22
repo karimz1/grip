@@ -71,3 +71,41 @@ func TestInspectorAndResourceSorting(t *testing.T) {
 		t.Fatal("compact viewport must hide inspector")
 	}
 }
+
+func TestNarrowFooterKeepsEveryActionAndProjectLink(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{160, 32}, {80, 24}, {79, 24}, {60, 20}, {48, 20}, {28, 18}} {
+		for _, details := range []bool{false, true} {
+			a := searchApp()
+			a.result.Warnings = []string{"Some processes could not be inspected."}
+			if !details {
+				a.screen = mainScreen
+			}
+			a.Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
+			raw := a.View().Content
+			view := ansi.Strip(raw)
+			hints := []string{"r refresh", "/ search", "k stop", "x force kill", "R GH", "D ☕ Donate"}
+			if details {
+				hints = append(hints, "a auto", "l locks only", "↑↓ select", "←→ path", "Esc back")
+			} else {
+				hints = append(hints, "1/2 tabs", "↑↓ move", "Enter inspect", "Space select", "Ctrl+A all", "Tab/→ tree", "i panel", "m/c RAM/CPU sort", "a auto off", "? help", "q quit")
+			}
+			for _, hint := range hints {
+				if !strings.Contains(view, hint) {
+					t.Fatalf("missing %q at %dx%d, details=%v:\n%s", hint, size.w, size.h, details, view)
+				}
+			}
+			if !strings.Contains(raw, repositoryURL) || !strings.Contains(raw, donateURL) {
+				t.Fatal("project hyperlinks lost")
+			}
+			lines := strings.Split(view, "\n")
+			if len(lines) > size.h {
+				t.Fatalf("height overflow at %dx%d", size.w, size.h)
+			}
+			for _, line := range lines {
+				if ansi.StringWidth(line) > size.w {
+					t.Fatalf("width overflow: %q", line)
+				}
+			}
+		}
+	}
+}

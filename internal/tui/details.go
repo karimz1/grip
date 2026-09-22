@@ -190,8 +190,22 @@ func (a *App) detailsPage() tea.View {
 			lines = append(lines, muted.Render(label)+part)
 		}
 	}
+	// Leave room for column headings, one usage, its path and every shortcut.
+	topLimit := max(0, a.height-len(footer)-8)
+	if len(lines) > topLimit {
+		compact := []string{lines[0], lines[1], a.compactSearch(), headerLine(accent.Render(count), muted.Render(positionText), w)}
+		if topLimit < 4 {
+			compact = []string{lines[0], a.compactSearch(), compact[3]}
+		}
+		if topLimit < 3 {
+			compact = compact[len(compact)-min(topLimit, len(compact)):]
+		} else if a.filtering {
+			compact[0] = a.compactSearch()
+		}
+		lines = compact[:min(len(compact), topLimit)]
+	}
 	// Metadata, path preview and footer stay visible while the table scrolls.
-	tableHeight := max(1, a.height-len(lines)-len(footer)-5)
+	tableHeight := max(3, a.height-len(lines)-len(footer)-5)
 	a.usageTable.SetWidth(w - 2)
 	a.usageTable.SetHeight(tableHeight)
 	tableView := a.usageTable.View()
@@ -264,4 +278,14 @@ func (a *App) refreshLabel() string {
 		return "LIVE · 5s"
 	}
 	return "MANUAL · r refresh"
+}
+
+func (a *App) compactSearch() string {
+	if a.filtering {
+		return a.activeFilter().View()
+	}
+	if query := a.activeFilter().Value(); query != "" {
+		return accent.Render("/ ") + safe(query)
+	}
+	return muted.Render("/ search")
 }

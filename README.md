@@ -211,6 +211,7 @@ terminating a process may release the resources it holds.
 | Process details | `←` / `→` | Page through selected path |
 | Navigation | `Esc` | Clear search, cancel, or go back |
 | Navigation | `?` | Show help |
+| Navigation | `R` / `D` | Open repository / donation page in your default browser |
 | Navigation | `q` / `Ctrl+C` | Back / quit |
 
 Only `1` and `2` switch tabs. `Tab` changes table/tree focus or selects a dialog
@@ -221,6 +222,8 @@ action. While editing a search, it stays in the search input.
 The workflow is shared across platforms, but discovery and lock semantics depend
 on the operating system. Results are a snapshot of what the current user can
 inspect. Permissions, process exits, and concurrent file activity can limit them.
+When a scan has limitations, the footer shows "Results may be incomplete."
+Press `?` for the full scan details.
 
 ### File discovery and termination
 

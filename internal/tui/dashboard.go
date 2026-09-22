@@ -99,10 +99,23 @@ func (a *App) dashboard() tea.View {
 		bottom[0] = danger.Render(status)
 	}
 	if len(a.result.Warnings) > 0 {
-		bottom = append(bottom, warning.Render(safe(strings.Join(a.result.Warnings, " • "))))
+		bottom = append(bottom, muted.Render("Results may be incomplete · ? details"))
 	}
 	bottom = append(bottom, muted.Render(strings.Repeat("─", w)))
 	bottom = append(bottom, footer...)
+	// Reserve the full footer and at least a header plus selected result.
+	// Compact metadata before sacrificing navigation or file rows.
+	topLimit := max(0, a.height-len(bottom)-2)
+	if len(lines) > topLimit {
+		compact := []string{lines[0], a.compactSearch(), lines[len(lines)-1]}
+		if topLimit < 3 {
+			compact = []string{lines[0], lines[len(lines)-1]}
+		}
+		if a.filtering && len(compact) > 0 {
+			compact[0] = a.compactSearch()
+		}
+		lines = compact[:min(len(compact), topLimit)]
+	}
 	available := max(0, a.height-len(lines)-len(bottom))
 	var panel []string
 	if panelWidth > 0 {

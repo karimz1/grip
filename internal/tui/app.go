@@ -195,6 +195,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ancestorCursor = -1
 		a.parentAction = false
 		return a, tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg { return refreshMsg{} })
+	case projectLinkMsg:
+		a.statusError = msg.err != nil
+		if msg.err != nil {
+			a.status = "Could not open browser. Open manually: " + msg.url
+		} else {
+			a.status = "Browser requested: " + msg.url
+		}
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			if a.cancelScan != nil {
@@ -204,6 +211,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.filtering {
 			return a, a.updateFilter(msg)
+		}
+		if a.screen != confirmScreen {
+			switch msg.String() {
+			case "R":
+				return a, openProjectLink(repositoryURL)
+			case "D":
+				return a, openProjectLink(donateURL)
+			}
 		}
 		switch a.screen {
 		case confirmScreen:

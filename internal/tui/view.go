@@ -25,15 +25,14 @@ func (a *App) View() tea.View {
 		activity = "  requesting termination…"
 	}
 	title := brand.Render("oflh") + "  " + muted.Render("Open File Lock Handle") + accent.Render(activity)
-	version := muted.Render(safe(a.version))
 	source := ""
-	lines := []string{headerLine(title, version, w), headerLine(accent.Render(safe(a.target.Path)), source, w), muted.Render(strings.Repeat("─", w))}
+	lines := []string{headerLine(title, muted.Render(safe(a.version)), w), headerLine(accent.Render(safe(a.target.Path)), source, w), muted.Render(strings.Repeat("─", w))}
 	var content []string
 	switch a.screen {
 	case confirmScreen:
 		content = a.confirmView(w)
 	case helpScreen:
-		content = helpView()
+		content = append(a.scanNotes(w), helpView(w)...)
 	default:
 		if a.lockedTab {
 			content = a.lockedView(w)
@@ -72,8 +71,8 @@ func (a *App) View() tea.View {
 		statusLine = danger.Render(safe(status))
 	}
 	bottom := []string{statusLine}
-	if len(a.result.Warnings) > 0 {
-		bottom = append(bottom, warning.Render(safe(strings.Join(a.result.Warnings, " • "))))
+	if len(a.result.Warnings) > 0 && a.screen == mainScreen {
+		bottom = append(bottom, muted.Render("Results may be incomplete · ? details"))
 	}
 	bottom = append(bottom, muted.Render(strings.Repeat("─", w)))
 	bottom = append(bottom, footer...)
@@ -226,6 +225,22 @@ func (a *App) confirmView(w int) []string {
 }
 
 func (a *App) footer() []string {
+	lines := a.navigationFooter()
+	if a.filtering || a.screen == confirmScreen || len(lines) == 0 {
+		return lines
+	}
+	last := len(lines) - 1
+	links := projectFooterLinks()
+	width := max(1, a.width-4)
+	if ansi.StringWidth(lines[last])+ansi.StringWidth(links)+4 <= width {
+		lines[last] = headerLine(lines[last], links, width)
+	} else {
+		lines = append(lines, links)
+	}
+	return lines
+}
+
+func (a *App) navigationFooter() []string {
 	w := max(1, a.width-4)
 	if a.screen == mainScreen && a.ancestorSource != nil {
 		return shortcutLines(w, shortcut{"↑↓", "process"}, shortcut{"k", "stop target"}, shortcut{"x", "force kill target"}, shortcut{"Tab/←", "back"})
@@ -250,12 +265,7 @@ func (a *App) footer() []string {
 		if a.detailLocksOnly {
 			lockHint.label = "all usages"
 		}
-		if a.width < 40 {
-			return shortcutLines(w, shortcut{"/", "search"}, shortcut{"Esc", "back"})
-		}
-		if a.width < 80 {
-			return shortcutLines(w, shortcut{"r", "refresh"}, shortcut{"a", "auto"}, shortcut{"/", "search"}, lockHint, shortcut{"↑↓", "select"}, shortcut{"←→", "path"}, shortcut{"Esc", "back"})
-		}
+
 		return shortcutLines(w, shortcut{"r", "refresh"}, shortcut{"a", "auto"}, shortcut{"/", "search"}, lockHint, shortcut{"↑↓", "select"}, shortcut{"←→", "path"}, shortcut{"k", "stop"}, shortcut{"x", "force kill"}, shortcut{"Esc", "back"})
 	case helpScreen:
 		return shortcutLines(w, shortcut{"↑↓", "scroll"}, shortcut{"Esc", "back"})
@@ -265,13 +275,26 @@ func (a *App) footer() []string {
 			auto = "auto on"
 		}
 		hints := []shortcut{{"1/2", "tabs"}, {"/", "search"}, {"↑↓", "move"}, {"Enter", "inspect"}, {"Space", "select"}, {"Ctrl+A", "all"}, {"Tab/→", "tree"}, {"i", "panel"}, {"m/c", "RAM/CPU sort"}, {"a", auto}, {"r", "refresh"}, {"k", "stop"}, {"x", "force kill"}, {"?", "help"}, {"q", "quit"}}
-		if a.width < 80 {
-			hints = []shortcut{{"1/2", "tabs"}, {"/", "search"}, {"↑↓", "move"}, {"Enter", "inspect"}, {"?", "help"}, {"q", "quit"}}
-		}
+
 		return shortcutLines(w, hints...)
 	}
 }
 
-func helpView() []string {
-	return []string{accent.Render("OPEN FILE LOCK HANDLE"), muted.Render("Source: https://github.com/karimz1/open-file-lock-handle"), "", "1 / 2          Processes / locked files", "↑ / ↓, j      Navigate processes", "PgUp / PgDn    Move one page", "Home / End     First / last process", "Enter          Inspect all matching paths", "Space          Toggle process selection", "Ctrl+A         Select / deselect all visible processes", "/              Search PID, name, user, path, access", "*              Wildcard in search: micro*dll, *.dll", "               Fragments / CamelCase initials; spaces combine terms.", "Esc            Clear filter / back / cancel", "r              Refresh; cancels the previous scan", "a              Toggle five-second auto-refresh", "i              Toggle process side panel (wide terminals)", "Tab / →        Focus tree; ↑↓ choose process, k/x stop it", "Tab / ← / Esc  Leave tree selection", "l              In details: toggle confirmed locks only", "m / c          Sort by RAM / CPU (highest first)", "n / p          Sort by name / PID", "k / x          Stop / force kill selection, or current process", "K / X          Selected processes; if none, all filtered processes", "Tab            Choose Cancel / Terminate in confirmation", "?              Show this help", "q / Ctrl+C     Quit", "", warning.Render("Every termination requires confirmation. Cancel is the default."), "Selections survive filtering; bulk confirmation includes every target.", "Process identities are revalidated before any termination.", "", accent.Render("READING THE EVIDENCE"), "locked         Platform lock or sharing-conflict evidence", "open           An observed file descriptor", "cwd            The current working directory", "executable     The process executable", "mapped         A mapped file or loaded module", "restart manager  Windows reports an application using a resource", "unknown        The OS does not expose this information", "", "A file being open does not prove it is locked.", "Permission restrictions and races can make results incomplete."}
+func helpView(width int) []string {
+	lines := append([]string{accent.Render("OPEN FILE LOCK HANDLE"), ""}, projectHelpLinks(width)...)
+	return append(lines, []string{"", "1 / 2          Processes / locked files", "↑ / ↓, j      Navigate processes", "PgUp / PgDn    Move one page", "Home / End     First / last process", "Enter          Inspect all matching paths", "Space          Toggle process selection", "Ctrl+A         Select / deselect all visible processes", "/              Search PID, name, user, path, access", "*              Wildcard in search: micro*dll, *.dll", "               Fragments / CamelCase initials; spaces combine terms.", "Esc            Clear filter / back / cancel", "r              Refresh; cancels the previous scan", "a              Toggle five-second auto-refresh", "i              Toggle process side panel (wide terminals)", "Tab / →        Focus tree; ↑↓ choose process, k/x stop it", "Tab / ← / Esc  Leave tree selection", "l              In details: toggle confirmed locks only", "m / c          Sort by RAM / CPU (highest first)", "n / p          Sort by name / PID", "k / x          Stop / force kill selection, or current process", "K / X          Selected processes; if none, all filtered processes", "Tab            Choose Cancel / Terminate in confirmation", "?              Show this help", "q / Ctrl+C     Quit", "", warning.Render("Every termination requires confirmation. Cancel is the default."), "Selections survive filtering; bulk confirmation includes every target.", "Process identities are revalidated before any termination.", "", accent.Render("READING THE EVIDENCE"), "locked         Platform lock or sharing-conflict evidence", "open           An observed file descriptor", "cwd            The current working directory", "executable     The process executable", "mapped         A mapped file or loaded module", "restart manager  Windows reports an application using a resource", "unknown        The OS does not expose this information", "", "A file being open does not prove it is locked.", "Permission restrictions and races can make results incomplete."}...)
+}
+
+// Keep the main results quiet while retaining the scanner's exact limitations
+// in the scrollable help view, including file caps and attribution caveats.
+func (a *App) scanNotes(width int) []string {
+	if len(a.result.Warnings) == 0 {
+		return nil
+	}
+	lines := []string{accent.Render("SCAN DETAILS"), ""}
+	for _, note := range a.result.Warnings {
+		lines = append(lines, strings.Split(ansi.Hardwrap(safe(note), max(1, width), true), "\n")...)
+		lines = append(lines, "")
+	}
+	return lines
 }
