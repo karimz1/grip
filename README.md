@@ -45,6 +45,27 @@ It is useful alongside tools such as `lsof`, `fuser`, and Task Manager. It does
 not bypass operating-system permissions or guarantee that every file lock is
 visible. See [Platform behavior](#platform-behavior) for the detection scope.
 
+### What makes it different
+
+`oflh` is path-first. Run `oflh .` on a folder and get a searchable view of every
+process using it, including process ancestry and the files each process has open,
+mapped, or locked.
+
+From the same TUI you can inspect detailed file usage, switch to a dedicated
+locked-files view, sort and filter results, and terminate the process or one of
+its parents when needed.
+
+Search is inspired by JetBrains-style navigation, with fragments, CamelCase
+abbreviations, and wildcards for quickly narrowing file names.
+
+| Search | Example match |
+| --- | --- |
+| `dll` | `plugin.dll` |
+| `MIMJWT` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
+| `micro*dll` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
+| `FLEC*` | `FileLockExampleCli.dll`, `FileLockExampleCli.deps.json` |
+| `FLEC*.json` | `FileLockExampleCli.deps.json` |
+
 ## Installation
 
 ### Homebrew
