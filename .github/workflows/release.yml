@@ -22,7 +22,7 @@ jobs:
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          python3 scripts/release.py validate --version "$TAG"
+          cargo xtask validate --version "$TAG"
           test "$TAG" != dev
           git fetch --no-tags origin "refs/tags/$TAG"
           test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$(git rev-parse HEAD)"
@@ -51,16 +51,7 @@ jobs:
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          python3 scripts/release.py assemble --version "$TAG" --formula "$RUNNER_TEMP/oflh.rb"
-          python3 - <<'PYCODE'
-          from pathlib import Path
-          import re
-          import os
-          p=Path(os.environ['RUNNER_TEMP']) / 'oflh.rb'
-          s=p.read_text()
-          s=re.sub(r'https://github.com/karimz1/open-file-lock-handle/releases/download/[^/]+/',Path('dist').resolve().as_uri()+'/',s)
-          p.write_text(s)
-          PYCODE
+          cargo xtask assemble --version "$TAG" --formula "$RUNNER_TEMP/oflh.rb" --base-url "file://$PWD/dist"
       - name: Install and test the generated formula
         shell: bash
         run: |
@@ -87,7 +78,7 @@ jobs:
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          python3 scripts/release.py assemble --version "$TAG" --formula "$RUNNER_TEMP/oflh.rb"
+          cargo xtask assemble --version "$TAG" --formula "$RUNNER_TEMP/oflh.rb"
           cd dist
           sha256sum --check checksums.txt
       - name: Create or update draft release
@@ -96,9 +87,11 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           if gh release view "$TAG" --json isDraft >/tmp/release.json 2>/dev/null; then
-            python3 -c 'import json; assert json.load(open("/tmp/release.json"))["isDraft"], "Refusing to replace a published release"'
+            test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
           else
-            gh release create "$TAG" --verify-tag --draft --title "$TAG" --generate-notes
+            PRERELEASE=()
+            if [[ "$TAG" == *-* ]]; then PRERELEASE=(--prerelease); fi
+            gh release create "$TAG" --verify-tag --draft "${PRERELEASE[@]}" --title "$TAG" --generate-notes
           fi
           gh release upload "$TAG" dist/* --clobber
           echo '### Release ready for review' >> "$GITHUB_STEP_SUMMARY"
