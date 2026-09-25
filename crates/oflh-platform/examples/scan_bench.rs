@@ -1,20 +1,26 @@
 //! Developer harness, excluded from cargo build --release --bin oflh.
-use oflh_core::{Cancellation, Target};
-fn main() {
-    let mut args = std::env::args_os().skip(1);
-    let target = Target::new(args.next().unwrap_or_else(|| ".".into())).unwrap();
-    let count = args
-        .next()
-        .and_then(|s| s.to_str().and_then(|s| s.parse::<usize>().ok()))
-        .unwrap_or(20);
-    let mut backend = oflh_platform::native().unwrap();
-    let mut times = Vec::new();
+use oflh_core::{Cancellation, Snapshot, Target};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut arguments = std::env::args_os().skip(1);
+    let target = Target::new(arguments.next().unwrap_or_else(|| ".".into()))?;
+    let mode = arguments.next().unwrap_or_else(|| "20".into());
+    let mut backend = oflh_platform::native()?;
+    if mode == "--dump" {
+        dump(&backend.scan(&target, &Cancellation::default())?);
+        return Ok(());
+    }
+    let count: usize = mode.to_str().ok_or("count must be UTF-8")?.parse()?;
+    if count == 0 {
+        return Err("count must be positive".into());
+    }
+    let mut times = Vec::with_capacity(count);
     let mut found = 0;
     for _ in 0..count {
-        let now = std::time::Instant::now();
-        let r = backend.scan(&target, &Cancellation::default()).unwrap();
-        times.push(now.elapsed().as_secs_f64() * 1000.0);
-        found = r.processes.len();
+        let started = std::time::Instant::now();
+        let snapshot = backend.scan(&target, &Cancellation::default())?;
+        times.push(started.elapsed().as_secs_f64() * 1000.0);
+        found = snapshot.processes.len();
     }
     times.sort_by(f64::total_cmp);
     println!(
@@ -22,4 +28,32 @@ fn main() {
         times[count / 2],
         times[((count as f64 * 0.95) as usize).min(count - 1)]
     );
+    Ok(())
+}
+
+/// Emit sorted observations for comparing stable fixtures across implementations.
+fn dump(snapshot: &Snapshot) {
+    let mut rows = Vec::new();
+    for process in &snapshot.processes {
+        for usage in &process.usages {
+            rows.push(format!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                process.identity.pid,
+                process.identity.started,
+                usage.path.display(),
+                usage.relation.label(),
+                usage.access.label(),
+                usage.deleted,
+                usage
+                    .lock
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_default()
+            ));
+        }
+    }
+    rows.sort();
+    for row in rows {
+        println!("{row}");
+    }
 }

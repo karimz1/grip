@@ -1,0 +1,102 @@
+{
+  "host": [
+    "Linux",
+    "fedora-pc-black",
+    "7.2.7-200.fc44.x86_64",
+    "#1 SMP PREEMPT_DYNAMIC Mon Sep 21 18:25:57 UTC 2026",
+    "x86_64"
+  ],
+  "cpus": 16,
+  "scans": {
+    "go": {
+      "directory": {
+        "timing": "processes=1 n=30 median_ms=218.776 p95_ms=227.781",
+        "peak_rss_kib": 11808
+      },
+      "file": {
+        "timing": "processes=1 n=30 median_ms=218.430 p95_ms=233.819",
+        "peak_rss_kib": 11792
+      },
+      "missing": {
+        "timing": "processes=0 n=30 median_ms=208.937 p95_ms=220.479",
+        "peak_rss_kib": 11404
+      }
+    },
+    "rust": {
+      "directory": {
+        "timing": "processes=1 n=30 median_ms=100.630 p95_ms=114.678",
+        "peak_rss_kib": 2708
+      },
+      "file": {
+        "timing": "processes=1 n=30 median_ms=96.803 p95_ms=106.624",
+        "peak_rss_kib": 2356
+      },
+      "missing": {
+        "timing": "processes=0 n=30 median_ms=108.035 p95_ms=112.119",
+        "peak_rss_kib": 2316
+      }
+    }
+  },
+  "terminal": {
+    "go": {
+      "binary_bytes": 4530441,
+      "runs": [
+        {
+          "first_frame_ms": 42.36449900008665,
+          "steady_rss_kib": 16220,
+          "idle_ticks": 28
+        },
+        {
+          "first_frame_ms": 42.90675300001112,
+          "steady_rss_kib": 17396,
+          "idle_ticks": 29
+        },
+        {
+          "first_frame_ms": 43.035114000076646,
+          "steady_rss_kib": 17524,
+          "idle_ticks": 28
+        },
+        {
+          "first_frame_ms": 42.54457000001821,
+          "steady_rss_kib": 16692,
+          "idle_ticks": 29
+        },
+        {
+          "first_frame_ms": 42.091126000059376,
+          "steady_rss_kib": 16840,
+          "idle_ticks": 28
+        }
+      ]
+    },
+    "rust": {
+      "binary_bytes": 1085944,
+      "runs": [
+        {
+          "first_frame_ms": 1.5189529999588558,
+          "steady_rss_kib": 4436,
+          "idle_ticks": 0
+        },
+        {
+          "first_frame_ms": 1.8593460000602136,
+          "steady_rss_kib": 4396,
+          "idle_ticks": 0
+        },
+        {
+          "first_frame_ms": 1.6665040000134468,
+          "steady_rss_kib": 4384,
+          "idle_ticks": 0
+        },
+        {
+          "first_frame_ms": 1.7417450000039025,
+          "steady_rss_kib": 4512,
+          "idle_ticks": 0
+        },
+        {
+          "first_frame_ms": 1.7628849999482554,
+          "steady_rss_kib": 4468,
+          "idle_ticks": 0
+        }
+      ]
+    }
+  }
+}
