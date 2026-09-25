@@ -15,11 +15,11 @@ use windows_sys::Win32::{
 };
 struct Handle(HANDLE);
 impl Handle {
-    fn new(h: HANDLE, operation: &'static str) -> Result<Self> {
-        if h.is_null() || h == INVALID_HANDLE_VALUE {
+    fn new(handle: HANDLE, operation: &'static str) -> Result<Self> {
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
             Err(io(operation, std::io::Error::last_os_error()))
         } else {
-            Ok(Self(h))
+            Ok(Self(handle))
         }
     }
 }
@@ -33,29 +33,32 @@ fn open(pid: u32, access: u32) -> Result<Handle> {
     // SAFETY: OpenProcess accepts numeric access and PID and returns a new owned handle.
     Handle::new(unsafe { OpenProcess(access, 0, pid) }, "open process")
 }
-fn wide(p: &Path) -> Result<Vec<u16>> {
-    let mut s: Vec<_> = p.as_os_str().encode_wide().collect();
-    if s.contains(&0) {
+fn wide(path: &Path) -> Result<Vec<u16>> {
+    let mut encoded: Vec<_> = path.as_os_str().encode_wide().collect();
+    if encoded.contains(&0) {
         return Err(Error::Unavailable("path contains NUL".into()));
     }
-    s.push(0);
-    Ok(s)
+    encoded.push(0);
+    Ok(encoded)
 }
-fn path(s: &[u16]) -> PathBuf {
+fn path(encoded: &[u16]) -> PathBuf {
     PathBuf::from(OsString::from_wide(
-        &s[..s.iter().position(|&c| c == 0).unwrap_or(s.len())],
+        &encoded[..encoded
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(encoded.len())],
     ))
 }
-fn ticks(t: FILETIME) -> u64 {
-    (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime)
+fn ticks(file_time: FILETIME) -> u64 {
+    (u64::from(file_time.dwHighDateTime) << 32) | u64::from(file_time.dwLowDateTime)
 }
-fn times(h: &Handle, pid: u32) -> Result<(Identity, u64)> {
+fn times(handle: &Handle, pid: u32) -> Result<(Identity, u64)> {
     let mut created = FILETIME::default();
     let mut exit = created;
     let mut kernel = created;
     let mut user = created;
     // SAFETY: process handle is live and all outputs are writable FILETIME values.
-    if unsafe { GetProcessTimes(h.0, &mut created, &mut exit, &mut kernel, &mut user) } == 0 {
+    if unsafe { GetProcessTimes(handle.0, &mut created, &mut exit, &mut kernel, &mut user) } == 0 {
         return Err(io("read process identity", std::io::Error::last_os_error()));
     }
     Ok((
@@ -69,17 +72,17 @@ fn times(h: &Handle, pid: u32) -> Result<(Identity, u64)> {
             .saturating_mul(100),
     ))
 }
-fn identity(pid: u32) -> Result<Identity> {
+fn read_identity(pid: u32) -> Result<Identity> {
     times(&open(pid, PROCESS_QUERY_LIMITED_INFORMATION)?, pid).map(|v| v.0)
 }
-fn process(pid: u32) -> Result<Process> {
-    let h = open(pid, PROCESS_QUERY_LIMITED_INFORMATION)?;
-    let (identity, _) = times(&h, pid)?;
+fn read_process(pid: u32) -> Result<Process> {
+    let handle = open(pid, PROCESS_QUERY_LIMITED_INFORMATION)?;
+    let (identity, _) = times(&handle, pid)?;
     let mut buf = vec![0u16; 32768];
     let mut len = buf.len() as u32;
     // SAFETY: buffer capacity matches len; h remains open.
     let executable =
-        if unsafe { QueryFullProcessImageNameW(h.0, 0, buf.as_mut_ptr(), &mut len) } != 0 {
+        if unsafe { QueryFullProcessImageNameW(handle.0, 0, buf.as_mut_ptr(), &mut len) } != 0 {
             path(&buf[..len as usize])
         } else {
             PathBuf::new()
@@ -98,12 +101,12 @@ fn process(pid: u32) -> Result<Process> {
     })
 }
 fn username(pid: u32) -> String {
-    let Ok(h) = open(pid, PROCESS_QUERY_LIMITED_INFORMATION) else {
+    let Ok(handle) = open(pid, PROCESS_QUERY_LIMITED_INFORMATION) else {
         return "unknown".into();
     };
     let mut token = null_mut();
     // SAFETY: output is a writable handle slot and process handle is valid.
-    if unsafe { OpenProcessToken(h.0, TOKEN_QUERY, &mut token) } == 0 {
+    if unsafe { OpenProcessToken(handle.0, TOKEN_QUERY, &mut token) } == 0 {
         return "unknown".into();
     }
     let Ok(token) = Handle::new(token, "open process token") else {
@@ -133,8 +136,8 @@ fn username(pid: u32) -> String {
     let sid = unsafe { (*(data.as_ptr().cast::<TOKEN_USER>())).User.Sid };
     let mut name = vec![0u16; 256];
     let mut domain = vec![0u16; 256];
-    let mut n = name.len() as u32;
-    let mut d = domain.len() as u32;
+    let mut name_length = name.len() as u32;
+    let mut domain_length = domain.len() as u32;
     let mut kind = 0;
     // SAFETY: SID belongs to live data buffer; names have lengths specified by n/d.
     if unsafe {
@@ -142,17 +145,17 @@ fn username(pid: u32) -> String {
             null(),
             sid,
             name.as_mut_ptr(),
-            &mut n,
+            &mut name_length,
             domain.as_mut_ptr(),
-            &mut d,
+            &mut domain_length,
             &mut kind,
         )
     } == 0
     {
         return "unknown".into();
     }
-    let name = String::from_utf16_lossy(&name[..n as usize]);
-    let domain = String::from_utf16_lossy(&domain[..d as usize]);
+    let name = String::from_utf16_lossy(&name[..name_length as usize]);
+    let domain = String::from_utf16_lossy(&domain[..domain_length as usize]);
     if domain.is_empty() {
         name
     } else {
@@ -162,7 +165,7 @@ fn username(pid: u32) -> String {
 fn file_id(path: &Path) -> Option<(u32, u64)> {
     let name = wide(path).ok()?;
     // SAFETY: terminated UTF-16 path; metadata-only open, maximal sharing; no mutation.
-    let h = Handle::new(
+    let handle = Handle::new(
         unsafe {
             CreateFileW(
                 name.as_ptr(),
@@ -179,7 +182,7 @@ fn file_id(path: &Path) -> Option<(u32, u64)> {
     .ok()?;
     let mut info = BY_HANDLE_FILE_INFORMATION::default();
     // SAFETY: live file handle and writable correctly sized output.
-    if unsafe { GetFileInformationByHandle(h.0, &mut info) } == 0 {
+    if unsafe { GetFileInformationByHandle(handle.0, &mut info) } == 0 {
         return None;
     }
     Some((
@@ -219,8 +222,14 @@ fn rm_users(paths: &[PathBuf]) -> Result<Vec<RM_PROCESS_INFO>> {
         ));
     }
     let session = Session(session);
-    let names: Vec<_> = paths.iter().map(|p| wide(p)).collect::<Result<_>>()?;
-    let pointers: Vec<_> = names.iter().map(|n| n.as_ptr()).collect();
+    let names: Vec<_> = paths
+        .iter()
+        .map(|process| wide(process))
+        .collect::<Result<_>>()?;
+    let pointers: Vec<_> = names
+        .iter()
+        .map(|name_length| name_length.as_ptr())
+        .collect();
     // SAFETY: path pointers refer to terminated strings kept alive through this synchronous call.
     let code = unsafe {
         RmRegisterResources(
@@ -292,7 +301,7 @@ fn sharing(path: &Path) -> Option<LockEvidence> {
         (DELETE, AccessKind::Delete),
     ] {
         // SAFETY: existing file only, maximal sharing; probes neither write data nor acquire byte-range locks.
-        let h = unsafe {
+        let handle = unsafe {
             CreateFileW(
                 name.as_ptr(),
                 access,
@@ -303,13 +312,13 @@ fn sharing(path: &Path) -> Option<LockEvidence> {
                 null_mut(),
             )
         };
-        if h == INVALID_HANDLE_VALUE {
+        if handle == INVALID_HANDLE_VALUE {
             // SAFETY: GetLastError has no preconditions and immediately follows failing call.
             if unsafe { GetLastError() } == ERROR_SHARING_VIOLATION {
                 return Some(LockEvidence::SharingConflict(kind));
             }
-        } else if !h.is_null() {
-            drop(Handle(h))
+        } else if !handle.is_null() {
+            drop(Handle(handle))
         }
     }
     None
@@ -320,7 +329,7 @@ pub struct Native {
 }
 fn process_snapshot() -> Result<(Handle, PROCESSENTRY32W)> {
     // SAFETY: valid snapshot flags; API returns an owned handle.
-    let h = Handle::new(
+    let handle = Handle::new(
         unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) },
         "snapshot processes",
     )?;
@@ -328,7 +337,7 @@ fn process_snapshot() -> Result<(Handle, PROCESSENTRY32W)> {
         dwSize: size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()
     };
-    Ok((h, entry))
+    Ok((handle, entry))
 }
 impl Backend for Native {
     fn scan(&mut self, target: &Target, cancel: &Cancellation) -> Result<Snapshot> {
@@ -341,20 +350,20 @@ impl Backend for Native {
         } else {
             file_id(&target.path)
         };
-        let (h, mut entry) = process_snapshot()?;
+        let (handle, mut entry) = process_snapshot()?;
         // SAFETY: initialized size field and live snapshot handle.
-        let mut ok = unsafe { Process32FirstW(h.0, &mut entry) };
+        let mut ok = unsafe { Process32FirstW(handle.0, &mut entry) };
         while ok != 0 {
             cancel.check()?;
             let pid = entry.th32ProcessID;
             parents.insert(pid, entry.th32ParentProcessID);
             if pid > 0 && pid != std::process::id() {
-                if let Ok(mut p) = process(pid) {
-                    if !p.executable.as_os_str().is_empty()
-                        && matches(target, target_id, &p.executable)
+                if let Ok(mut process) = read_process(pid) {
+                    if !process.executable.as_os_str().is_empty()
+                        && matches(target, target_id, &process.executable)
                     {
-                        p.usages.push(Usage {
-                            path: p.executable.clone(),
+                        process.usages.push(Usage {
+                            path: process.executable.clone(),
                             relation: Relation::Executable,
                             access: Access::Execute,
                             ..Usage::default()
@@ -388,7 +397,7 @@ impl Backend for Native {
                             cancel.check()?;
                             let path = path(&module.szExePath);
                             if matches(target, target_id, &path) {
-                                p.usages.push(Usage {
+                                process.usages.push(Usage {
                                     path,
                                     relation: Relation::Mapped,
                                     access: Access::Execute,
@@ -401,15 +410,17 @@ impl Backend for Native {
                     } else {
                         limited += 1
                     }
-                    if !p.usages.is_empty() && identity(pid).is_ok_and(|id| id == p.identity) {
-                        snapshot.processes.push(p)
+                    if !process.usages.is_empty()
+                        && read_identity(pid).is_ok_and(|identity| identity == process.identity)
+                    {
+                        snapshot.processes.push(process)
                     }
                 } else {
                     limited += 1
                 }
             }
             // SAFETY: same live process snapshot and output.
-            ok = unsafe { Process32NextW(h.0, &mut entry) };
+            ok = unsafe { Process32NextW(handle.0, &mut entry) };
         }
         // SAFETY: capture failure code immediately after enumeration ends.
         let code = unsafe { GetLastError() };
@@ -427,7 +438,7 @@ impl Backend for Native {
             cancel.check()?;
             if target.directory {
                 let entries = match std::fs::read_dir(&path) {
-                    Ok(e) => e,
+                    Ok(error) => error,
                     Err(_) => {
                         limited += 1;
                         continue;
@@ -470,27 +481,27 @@ impl Backend for Native {
             correlate(&batch, &mut snapshot, &mut cache, &mut limited, cancel)?
         }
         snapshot.normalize();
-        for p in &mut snapshot.processes {
+        for process in &mut snapshot.processes {
             cancel.check()?;
-            p.user = username(p.identity.pid);
-            p.parent = parents.get(&p.identity.pid).copied().unwrap_or(0);
-            let mut next = p.parent;
+            process.user = username(process.identity.pid);
+            process.parent = parents.get(&process.identity.pid).copied().unwrap_or(0);
+            let mut next = process.parent;
             while next > 0
-                && next != p.identity.pid
-                && p.ancestors.len() < 8
-                && !p.ancestors.iter().any(|a| a.identity.pid == next)
+                && next != process.identity.pid
+                && process.ancestors.len() < 8
+                && !process.ancestors.iter().any(|a| a.identity.pid == next)
             {
                 cancel.check()?;
-                match process(next) {
+                match read_process(next) {
                     Ok(a) => {
-                        p.ancestors.push(Ancestor {
+                        process.ancestors.push(Ancestor {
                             identity: a.identity,
                             name: a.name,
                         });
                         next = parents.get(&next).copied().unwrap_or(0)
                     }
                     Err(_) => {
-                        p.ancestors.push(Ancestor {
+                        process.ancestors.push(Ancestor {
                             identity: Identity {
                                 pid: next,
                                 ..Identity::default()
@@ -510,7 +521,7 @@ impl Backend for Native {
         let ids = snapshot
             .processes
             .iter()
-            .map(|p| p.identity)
+            .map(|process| process.identity)
             .collect::<Vec<_>>();
         apply_metrics(&mut snapshot, self.sample(&ids, cancel)?);
         Ok(snapshot)
@@ -521,61 +532,64 @@ impl Backend for Native {
         cancel: &Cancellation,
     ) -> Result<Vec<(Identity, Metrics)>> {
         let mut raw = Vec::with_capacity(ids.len());
-        for &id in ids {
+        for &identity in ids {
             cancel.check()?;
-            let Ok(h) = open(id.pid, PROCESS_QUERY_INFORMATION | PROCESS_VM_READ) else {
+            let Ok(handle) = open(identity.pid, PROCESS_QUERY_INFORMATION | PROCESS_VM_READ) else {
                 continue;
             };
-            let Ok((current, cpu)) = times(&h, id.pid) else {
+            let Ok((current, cpu)) = times(&handle, identity.pid) else {
                 continue;
             };
-            if current != id {
+            if current != identity {
                 continue;
             }
-            let mut m = PROCESS_MEMORY_COUNTERS {
+            let mut memory_info = PROCESS_MEMORY_COUNTERS {
                 cb: size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
                 ..Default::default()
             };
             // SAFETY: live process handle, writable PROCESS_MEMORY_COUNTERS with its exact size.
             let memory = if unsafe {
-                GetProcessMemoryInfo(h.0, &mut m, size_of::<PROCESS_MEMORY_COUNTERS>() as u32)
+                GetProcessMemoryInfo(
+                    handle.0,
+                    &mut memory_info,
+                    size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                )
             } != 0
             {
-                Some(m.WorkingSetSize as u64)
+                Some(memory_info.WorkingSetSize as u64)
             } else {
                 None
             };
-            raw.push((id, cpu, memory));
+            raw.push((identity, cpu, memory));
         }
-        let total = self
-            .sampler
-            .clock()
-            .saturating_mul(std::thread::available_parallelism().map_or(1, |n| n.get()) as u64);
+        let total = self.sampler.clock().saturating_mul(
+            std::thread::available_parallelism().map_or(1, |name_length| name_length.get()) as u64,
+        );
         Ok(self.sampler.sample(raw, total))
     }
-    fn terminate(&mut self, id: Identity, force: bool, cancel: &Cancellation) -> Result<()> {
-        id.validate()?;
+    fn terminate(&mut self, identity: Identity, force: bool, cancel: &Cancellation) -> Result<()> {
+        identity.validate()?;
         cancel.check()?;
-        let h = open(
-            id.pid,
+        let handle = open(
+            identity.pid,
             PROCESS_QUERY_LIMITED_INFORMATION
                 | 0x00100000
                 | if force { PROCESS_TERMINATE } else { 0 },
         )?;
-        if times(&h, id.pid)?.0 != id {
+        if times(&handle, identity.pid)?.0 != identity {
             return Err(Error::Changed);
         }
         if force {
             // SAFETY: owned process handle pins the exact validated lifetime and has terminate access.
-            if unsafe { TerminateProcess(h.0, 1) } == 0 {
+            if unsafe { TerminateProcess(handle.0, 1) } == 0 {
                 return Err(io("terminate process", std::io::Error::last_os_error()));
             }
             return Ok(());
         }
         let mut state = CloseState {
-            pid: id.pid,
+            pid: identity.pid,
             sent: 0,
-            handle: h.0,
+            handle: handle.0,
         };
         // SAFETY: callback receives a pointer to state, valid for synchronous EnumWindows. h remains open.
         if unsafe { EnumWindows(Some(close_window), (&mut state as *mut CloseState) as isize) } == 0
@@ -637,30 +651,30 @@ fn correlate(
     }
     let lock = sharing(&paths[0]);
     for app in apps {
-        let id = Identity {
+        let identity = Identity {
             pid: app.Process.dwProcessId,
             started: ticks(app.Process.ProcessStartTime),
             started_sub: 0,
         };
-        if id.pid == std::process::id() {
+        if identity.pid == std::process::id() {
             continue;
         }
-        let mut p = if let Some(p) = cache.get(&id) {
-            if !identity(id.pid).is_ok_and(|i| i == id) {
+        let mut process = if let Some(process) = cache.get(&identity) {
+            if !read_identity(identity.pid).is_ok_and(|i| i == identity) {
                 continue;
             }
-            p.clone()
+            process.clone()
         } else {
-            match process(id.pid) {
-                Ok(p) if p.identity == id => {
-                    cache.insert(id, p.clone());
-                    p
+            match read_process(identity.pid) {
+                Ok(process) if process.identity == identity => {
+                    cache.insert(identity, process.clone());
+                    process
                 }
                 Ok(_) => continue,
                 Err(_) => {
                     *limited += 1;
                     Process {
-                        identity: id,
+                        identity,
                         name: path(&app.strAppName).to_string_lossy().into_owned(),
                         user: "unknown".into(),
                         ..Process::default()
@@ -668,20 +682,20 @@ fn correlate(
                 }
             }
         };
-        p.usages.push(Usage {
+        process.usages.push(Usage {
             path: paths[0].clone(),
             relation: Relation::RestartManager,
             ..Usage::default()
         });
         if let Some(lock) = &lock {
-            p.usages.push(Usage {
+            process.usages.push(Usage {
                 path: paths[0].clone(),
                 relation: Relation::Locked,
                 lock: Some(lock.clone()),
                 ..Usage::default()
             })
         }
-        snapshot.processes.push(p);
+        snapshot.processes.push(process);
     }
     Ok(())
 }

@@ -22,8 +22,8 @@ fn selected() -> Style {
         .bg(Color::Rgb(109, 40, 217))
         .add_modifier(Modifier::BOLD)
 }
-fn access_style(a: Access) -> Style {
-    Style::default().fg(match a {
+fn access_style(access: Access) -> Style {
+    Style::default().fg(match access {
         Access::Read => Color::Rgb(155, 197, 161),
         Access::Write | Access::ReadWrite => Color::Rgb(217, 183, 125),
         Access::Execute | Access::Mapped => ACCENT,
@@ -31,17 +31,19 @@ fn access_style(a: Access) -> Style {
         _ => MUTED,
     })
 }
-pub fn cpu(p: &Process) -> String {
-    p.cpu.map_or_else(|| "—".into(), |n| format!("{n:.1}%"))
+pub fn cpu(process: &Process) -> String {
+    process
+        .cpu
+        .map_or_else(|| "—".into(), |value| format!("{value:.1}%"))
 }
-pub fn memory(p: &Process) -> String {
-    p.memory.map_or_else(
+pub fn memory(process: &Process) -> String {
+    process.memory.map_or_else(
         || "—".into(),
-        |n| {
-            if n >= 1 << 30 {
-                format!("{:.1} GiB", n as f64 / (1u64 << 30) as f64)
+        |value| {
+            if value >= 1 << 30 {
+                format!("{:.1} GiB", value as f64 / (1u64 << 30) as f64)
             } else {
-                format!("{:.1} MiB", n as f64 / (1u64 << 20) as f64)
+                format!("{:.1} MiB", value as f64 / (1u64 << 20) as f64)
             }
         },
     )
@@ -52,11 +54,11 @@ fn text(frame: &mut Frame, area: Rect, value: impl Into<String>, style: Style) {
 fn line_area(area: Rect, y: u16) -> Rect {
     Rect::new(area.x, area.y.saturating_add(y), area.width, 1)
 }
-fn process_access(p: &Process, usages: &[usize]) -> Access {
+fn process_access(process: &Process, usages: &[usize]) -> Access {
     let mut read = false;
     let mut write = false;
     for &i in usages {
-        match p.usages[i].access {
+        match process.usages[i].access {
             Access::Read => read = true,
             Access::Write => write = true,
             Access::ReadWrite => {
@@ -75,7 +77,7 @@ fn process_access(p: &Process, usages: &[usize]) -> Access {
     } else {
         usages
             .first()
-            .map_or(Access::Unknown, |&i| p.usages[i].access)
+            .map_or(Access::Unknown, |&i| process.usages[i].access)
     }
 }
 fn search(frame: &mut Frame, area: Rect, app: &App, detail: bool) {
@@ -110,8 +112,8 @@ fn search(frame: &mut Frame, area: Rect, app: &App, detail: bool) {
         area,
     );
     if app.editing && inner.width > 2 {
-        let at = app.input_cursor.min(value.len());
-        let width = value[..at]
+        let position = app.input_cursor.min(value.len());
+        let width = value[..position]
             .chars()
             .map(|c| c.width().unwrap_or(0))
             .sum::<usize>();
@@ -229,8 +231,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 if app.screen == Screen::Confirm {
                     format!("{} targets. Enlarge to review.", app.pending.len())
                 } else {
-                    app.current().map_or_else(String::new, |p| {
-                        format!("{} {}", p.identity.pid, safe(&p.name))
+                    app.current().map_or_else(String::new, |process| {
+                        format!("{} {}", process.identity.pid, safe(&process.name))
                     })
                 }
             ),
@@ -331,7 +333,7 @@ fn main_view(frame: &mut Frame, area: Rect, app: &mut App) {
             "{} locked files · {} lock entries",
             app.rows
                 .iter()
-                .map(|r| &app.snapshot.processes[r.process].usages[r.usages[0]].path)
+                .map(|row| &app.snapshot.processes[row.process].usages[row.usages[0]].path)
                 .collect::<std::collections::HashSet<_>>()
                 .len(),
             app.rows.len()
@@ -475,49 +477,54 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         vec!["", "PID", "PROCESS", "PATH"]
     };
-    let rows = app.rows.iter().skip(start).take(count).map(|r| {
-        let p = &app.snapshot.processes[r.process];
-        let u = &p.usages[r.usages[0]];
-        let mark = if app.selected.contains(&p.identity) {
+    let rows = app.rows.iter().skip(start).take(count).map(|row| {
+        let process = &app.snapshot.processes[row.process];
+        let usage = &process.usages[row.usages[0]];
+        let mark = if app.selected.contains(&process.identity) {
             "●"
         } else {
             " "
         };
         let path = if app.target.directory {
-            u.path.strip_prefix(&app.target.path).unwrap_or(&u.path)
+            usage
+                .path
+                .strip_prefix(&app.target.path)
+                .unwrap_or(&usage.path)
         } else {
-            &u.path
+            &usage.path
         };
         let path = format!(
             "{}{}{}",
             safe(&path.to_string_lossy()),
-            if u.deleted { " (deleted)" } else { "" },
-            if r.usages.len() > 1 {
-                format!(" +{}", r.usages.len() - 1)
+            if usage.deleted { " (deleted)" } else { "" },
+            if row.usages.len() > 1 {
+                format!(" +{}", row.usages.len() - 1)
             } else {
                 String::new()
             }
         );
-        let a = process_access(p, &r.usages);
+        let access = process_access(process, &row.usages);
         let mut cells = vec![
             Cell::from(mark),
-            Cell::from(p.identity.pid.to_string()),
-            Cell::from(safe(&p.name)),
+            Cell::from(process.identity.pid.to_string()),
+            Cell::from(safe(&process.name)),
         ];
         if wide {
             cells.extend([
-                Cell::from(safe(&p.user)),
-                Cell::from(cpu(p)),
-                Cell::from(memory(p)),
+                Cell::from(safe(&process.user)),
+                Cell::from(cpu(process)),
+                Cell::from(memory(process)),
             ]);
         }
         if medium {
             cells.push(
-                Cell::from(if app.locked { "locked" } else { a.label() }).style(if app.locked {
-                    Style::default().fg(LOCK)
-                } else {
-                    access_style(a)
-                }),
+                Cell::from(if app.locked { "locked" } else { access.label() }).style(
+                    if app.locked {
+                        Style::default().fg(LOCK)
+                    } else {
+                        access_style(access)
+                    },
+                ),
             )
         }
         cells.push(Cell::from(path));
@@ -532,7 +539,7 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
 }
 fn inspector(frame: &mut Frame, area: Rect, app: &App) {
     let captured;
-    let p = if let Some(tree) = &app.tree {
+    let process = if let Some(tree) = &app.tree {
         let Some(child) = tree.nodes.last() else {
             return;
         };
@@ -544,19 +551,19 @@ fn inspector(frame: &mut Frame, area: Rect, app: &App) {
         app.snapshot
             .processes
             .iter()
-            .find(|p| p.identity == child.identity)
+            .find(|process| process.identity == child.identity)
             .unwrap_or(&captured)
     } else {
-        let Some(p) = app.current() else { return };
-        p
+        let Some(process) = app.current() else { return };
+        process
     };
     let mut lines = vec![
         Line::styled(
-            format!("{} · PID {}", safe(&p.name), p.identity.pid),
+            format!("{} · PID {}", safe(&process.name), process.identity.pid),
             accent(),
         ),
         Line::styled("─".repeat(area.width as usize), Style::default().fg(MUTED)),
-        Line::raw(format!("CPU {}   RAM {}", cpu(p), memory(p))),
+        Line::raw(format!("CPU {}   RAM {}", cpu(process), memory(process))),
         Line::styled(
             "CPU = share of machine · RAM = RSS",
             Style::default().fg(MUTED),
@@ -575,17 +582,17 @@ fn inspector(frame: &mut Frame, area: Rect, app: &App) {
     let nodes = if let Some(tree) = &app.tree {
         &tree.nodes
     } else {
-        owned = p
+        owned = process
             .ancestors
             .iter()
             .rev()
-            .map(|a| ActionTarget {
-                identity: a.identity,
-                name: a.name.clone(),
+            .map(|access| ActionTarget {
+                identity: access.identity,
+                name: access.name.clone(),
             })
             .chain(std::iter::once(ActionTarget {
-                identity: p.identity,
-                name: p.name.clone(),
+                identity: process.identity,
+                name: process.name.clone(),
             }))
             .collect::<Vec<_>>();
         &owned
@@ -603,13 +610,13 @@ fn inspector(frame: &mut Frame, area: Rect, app: &App) {
         indices.push(nodes.len().saturating_sub(1))
     }
     for i in indices {
-        let n = &nodes[i];
+        let node = &nodes[i];
         lines.push(Line::styled(
             format!(
                 "{}└─ {} ({})",
                 "  ".repeat(i.min(8)),
-                safe(&n.name),
-                n.identity.pid
+                safe(&node.name),
+                node.identity.pid
             ),
             if app.tree.is_some() && i == cursor {
                 selected()
@@ -621,23 +628,23 @@ fn inspector(frame: &mut Frame, area: Rect, app: &App) {
         ))
     }
     if let Some(tree) = &app.tree {
-        let n = &tree.nodes[tree.cursor];
+        let node = &tree.nodes[tree.cursor];
         lines.extend([
             Line::raw(""),
             Line::styled("ACTION TARGET", accent()),
-            Line::raw(format!("{} · PID {}", safe(&n.name), n.identity.pid)),
+            Line::raw(format!("{} · PID {}", safe(&node.name), node.identity.pid)),
         ]);
     }
     lines.extend([
         Line::raw(""),
         Line::styled("EXECUTABLE", accent()),
-        Line::raw(safe(&p.executable.to_string_lossy())),
+        Line::raw(safe(&process.executable.to_string_lossy())),
     ]);
-    if let Some(r) = app.rows.get(app.cursor) {
+    if let Some(row) = app.rows.get(app.cursor) {
         lines.extend([
             Line::raw(""),
             Line::styled("SELECTED PATH", accent()),
-            Line::raw(safe(&p.usages[r.usages[0]].path.to_string_lossy())),
+            Line::raw(safe(&process.usages[row.usages[0]].path.to_string_lossy())),
         ]);
     }
     frame.render_widget(Paragraph::new(lines), area);
@@ -649,7 +656,7 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         "oflh  /  process details",
         accent(),
     );
-    let Some(p) = app.detail() else {
+    let Some(process) = app.detail() else {
         text(
             frame,
             Rect::new(area.x, area.y + 2, area.width, 3),
@@ -667,22 +674,29 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         Line::styled(
             format!(
                 "{}   PID {} · {}",
-                safe(&p.name),
-                p.identity.pid,
-                safe(&p.user)
+                safe(&process.name),
+                process.identity.pid,
+                safe(&process.user)
             ),
             accent(),
         ),
-        Line::raw(format!("EXE {}", safe(&p.executable.to_string_lossy()))),
-        Line::raw(format!("CWD {}", safe(&p.cwd.to_string_lossy()))),
+        Line::raw(format!(
+            "EXE {}",
+            safe(&process.executable.to_string_lossy())
+        )),
+        Line::raw(format!("CWD {}", safe(&process.cwd.to_string_lossy()))),
         Line::raw(format!(
             "PARENT {}",
-            p.ancestors.first().map_or_else(
+            process.ancestors.first().map_or_else(
                 || "unavailable".into(),
-                |a| format!("{} ({})", safe(&a.name), a.identity.pid)
+                |access| format!("{} ({})", safe(&access.name), access.identity.pid)
             )
         )),
-        Line::raw(format!("CPU {} machine · RAM {} RSS", cpu(p), memory(p))),
+        Line::raw(format!(
+            "CPU {} machine · RAM {} RSS",
+            cpu(process),
+            memory(process)
+        )),
     ];
     let compact = area.height < 24;
     let head_height = if compact { 3 } else { 6 };
@@ -691,9 +705,9 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
             header[0].clone(),
             Line::raw(format!(
                 "CPU {} · RAM {} · PARENT {}",
-                cpu(p),
-                memory(p),
-                p.parent
+                cpu(process),
+                memory(process),
+                process.parent
             )),
         ];
         frame.render_widget(
@@ -715,7 +729,12 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
     let locked = app
         .usage_rows
         .iter()
-        .filter_map(|&i| p.usages[i].lock.as_ref().map(|_| &p.usages[i].path))
+        .filter_map(|&i| {
+            process.usages[i]
+                .lock
+                .as_ref()
+                .map(|_| &process.usages[i].path)
+        })
         .collect::<std::collections::HashSet<_>>()
         .len();
     text(
@@ -729,7 +748,7 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
                 "ALL USAGES"
             },
             app.usage_rows.len(),
-            p.usages.len(),
+            process.usages.len(),
             if app.usage_rows.is_empty() {
                 0
             } else {
@@ -742,14 +761,14 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
     let current = app
         .usage_rows
         .get(app.usage_cursor)
-        .and_then(|&i| p.usages.get(i));
+        .and_then(|&i| process.usages.get(i));
     text(
         frame,
         line_area(area, head_height + 4),
         format!(
             "FILE {}",
-            current.map_or_else(String::new, |u| safe(
-                &u.path.file_name().unwrap_or_default().to_string_lossy()
+            current.map_or_else(String::new, |usage| safe(
+                &usage.path.file_name().unwrap_or_default().to_string_lossy()
             ))
         ),
         Style::default().fg(MUTED),
@@ -781,28 +800,29 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         } else {
             vec![Constraint::Min(8), Constraint::Length(11)]
         };
-        let rows = app.usage_rows.iter().skip(start).take(count).map(|&i| {
-            let u = &p.usages[i];
-            let mut cells = vec![Cell::from(safe(
-                &u.path.file_name().unwrap_or_default().to_string_lossy(),
-            ))];
-            if wide {
-                cells.push(
-                    Cell::from(u.relation.label())
-                        .style(Style::default().fg(if u.lock.is_some() { LOCK } else { ACCENT })),
-                );
-                cells.push(Cell::from(u.access.label()).style(access_style(u.access)));
-                cells.push(Cell::from(safe(
-                    &u.path
-                        .parent()
-                        .unwrap_or(std::path::Path::new(""))
-                        .to_string_lossy(),
-                )))
-            } else {
-                cells.push(Cell::from(u.relation.label()))
-            }
-            TableRow::new(cells)
-        });
+        let rows =
+            app.usage_rows.iter().skip(start).take(count).map(|&i| {
+                let usage = &process.usages[i];
+                let mut cells = vec![Cell::from(safe(
+                    &usage.path.file_name().unwrap_or_default().to_string_lossy(),
+                ))];
+                if wide {
+                    cells.push(Cell::from(usage.relation.label()).style(
+                        Style::default().fg(if usage.lock.is_some() { LOCK } else { ACCENT }),
+                    ));
+                    cells.push(Cell::from(usage.access.label()).style(access_style(usage.access)));
+                    cells.push(Cell::from(safe(
+                        &usage
+                            .path
+                            .parent()
+                            .unwrap_or(std::path::Path::new(""))
+                            .to_string_lossy(),
+                    )))
+                } else {
+                    cells.push(Cell::from(usage.relation.label()))
+                }
+                TableRow::new(cells)
+            });
         let headers = if wide {
             vec!["FILE", "RELATION", "ACCESS", "DIRECTORY"]
         } else {
@@ -822,31 +842,32 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         frame.render_stateful_widget(table, body, &mut state);
     }
     let preview_y = area.bottom().saturating_sub(foot_h + 3);
-    if let Some(u) = current {
+    if let Some(usage) = current {
         text(
             frame,
             Rect::new(area.x, preview_y, area.width, 1),
             format!(
                 "SELECTED PATH · {} · {}",
-                u.relation.label(),
-                u.access.label()
+                usage.relation.label(),
+                usage.access.label()
             ),
-            access_style(u.access),
+            access_style(usage.access),
         );
         let full = format!(
             "{}{}",
-            safe(&u.path.to_string_lossy()),
-            u.lock
+            safe(&usage.path.to_string_lossy()),
+            usage
+                .lock
                 .as_ref()
                 .map_or_else(String::new, |l| format!(" · {}", safe(&l.to_string())))
         );
         let page_width = area.width.max(1) as usize;
         let chars: Vec<_> = full.chars().collect();
-        let at = app
+        let position = app
             .path_page
             .min(chars.len().saturating_sub(1) / page_width)
             * page_width;
-        let preview: String = chars[at..].iter().collect();
+        let preview: String = chars[position..].iter().collect();
         text(
             frame,
             Rect::new(area.x, preview_y + 1, area.width, 1),
@@ -893,11 +914,11 @@ fn dialog(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::raw(
             "Affected processes (including selections hidden by filters):",
         ));
-        for p in &app.pending {
+        for process in &app.pending {
             lines.push(Line::raw(format!(
                 "  {:<9} {}",
-                p.identity.pid,
-                safe(&p.name)
+                process.identity.pid,
+                safe(&process.name)
             )))
         }
     } else {
@@ -999,24 +1020,24 @@ fn locked_table(frame: &mut Frame, area: Rect, app: &App) {
     }
     widths.push(Constraint::Min(4));
     headers.push("LOCKED FILE");
-    let rows = app.rows.iter().skip(start).take(count).map(|r| {
-        let p = &app.snapshot.processes[r.process];
-        let u = &p.usages[r.usages[0]];
+    let rows = app.rows.iter().skip(start).take(count).map(|row| {
+        let process = &app.snapshot.processes[row.process];
+        let usage = &process.usages[row.usages[0]];
         let mut cells = vec![
-            Cell::from(if app.selected.contains(&p.identity) {
+            Cell::from(if app.selected.contains(&process.identity) {
                 "●"
             } else {
                 " "
             }),
-            Cell::from(p.identity.pid.to_string()),
+            Cell::from(process.identity.pid.to_string()),
         ];
         if show_name {
-            cells.push(Cell::from(safe(&p.name)))
+            cells.push(Cell::from(safe(&process.name)))
         }
         cells.push(Cell::from(format!(
             "{}{}",
-            safe(&u.path.to_string_lossy()),
-            if u.deleted { " (deleted)" } else { "" }
+            safe(&usage.path.to_string_lossy()),
+            if usage.deleted { " (deleted)" } else { "" }
         )));
         TableRow::new(cells)
     });

@@ -12,15 +12,20 @@ mod unix;
 #[cfg(windows)]
 mod windows;
 
+/// Operations provided by a single worker-owned native scanner.
 pub trait Backend: Send + 'static {
+    /// Collect current observations, honoring cancellation between native calls.
     fn scan(&mut self, target: &Target, cancel: &Cancellation) -> Result<Snapshot>;
+    /// Sample resources only for the supplied process birth identities.
     fn sample(
         &mut self,
         ids: &[Identity],
         cancel: &Cancellation,
     ) -> Result<Vec<(Identity, Metrics)>>;
+    /// Request termination after validating identity and protected-process guards.
     fn terminate(&mut self, id: Identity, force: bool, cancel: &Cancellation) -> Result<()>;
 }
+/// Construct the scanner for the current operating system.
 pub fn native() -> Result<Box<dyn Backend>> {
     #[cfg(target_os = "linux")]
     {

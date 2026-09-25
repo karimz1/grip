@@ -128,26 +128,34 @@ impl App {
     pub fn current(&self) -> Option<&Process> {
         self.rows
             .get(self.cursor)
-            .and_then(|r| self.snapshot.processes.get(r.process))
+            .and_then(|row| self.snapshot.processes.get(row.process))
     }
     pub fn detail(&self) -> Option<&Process> {
-        self.detail_id
-            .and_then(|id| self.snapshot.processes.iter().find(|p| p.identity == id))
+        self.detail_id.and_then(|identity| {
+            self.snapshot
+                .processes
+                .iter()
+                .find(|process| process.identity == identity)
+        })
     }
     pub fn replace(&mut self, snapshot: Snapshot) {
-        let selected = self.current().map(|p| p.identity);
+        let selected = self.current().map(|process| process.identity);
         let usage = self
             .rows
             .get(self.cursor)
             .filter(|_| self.locked)
-            .and_then(|r| self.snapshot.processes[r.process].usages.get(r.usages[0]))
+            .and_then(|row| {
+                self.snapshot.processes[row.process]
+                    .usages
+                    .get(row.usages[0])
+            })
             .cloned();
         let detail_usage = self
             .detail()
-            .and_then(|p| {
+            .and_then(|process| {
                 self.usage_rows
                     .get(self.usage_cursor)
-                    .and_then(|&i| p.usages.get(i))
+                    .and_then(|&i| process.usages.get(i))
             })
             .cloned();
         self.snapshot = snapshot;
@@ -157,69 +165,73 @@ impl App {
             .iter()
             .map(ProcessIndex::new)
             .collect();
-        self.selected
-            .retain(|id| self.snapshot.processes.iter().any(|p| p.identity == *id));
+        self.selected.retain(|identity| {
+            self.snapshot
+                .processes
+                .iter()
+                .any(|process| process.identity == *identity)
+        });
         self.refilter();
-        if let Some(at) = self.rows.iter().position(|r| {
-            Some(self.snapshot.processes[r.process].identity) == selected
-                && usage.as_ref().is_none_or(|u| {
-                    r.usages
+        if let Some(position) = self.rows.iter().position(|row| {
+            Some(self.snapshot.processes[row.process].identity) == selected
+                && usage.as_ref().is_none_or(|usage| {
+                    row.usages
                         .iter()
-                        .any(|&i| self.snapshot.processes[r.process].usages[i] == *u)
+                        .any(|&i| self.snapshot.processes[row.process].usages[i] == *usage)
                 })
         }) {
-            self.cursor = at
+            self.cursor = position
         }
         self.filter_details();
-        if let Some(p) = self.detail()
-            && let Some(at) = self
+        if let Some(process) = self.detail()
+            && let Some(position) = self
                 .usage_rows
                 .iter()
-                .position(|&i| Some(&p.usages[i]) == detail_usage.as_ref())
+                .position(|&i| Some(&process.usages[i]) == detail_usage.as_ref())
         {
-            self.usage_cursor = at
+            self.usage_cursor = position
         }
     }
     pub fn metrics(&mut self, metrics: Vec<(Identity, Metrics)>) {
-        for (id, m) in metrics {
-            if let Some(p) = self
+        for (identity, m) in metrics {
+            if let Some(process) = self
                 .snapshot
                 .processes
                 .iter_mut()
-                .find(|p| p.identity == id)
+                .find(|process| process.identity == identity)
             {
-                p.memory = m.memory;
-                p.cpu = m.cpu
+                process.memory = m.memory;
+                process.cpu = m.cpu
             }
         }
         if matches!(self.sort, Sort::Cpu | Sort::Memory) {
-            let id = self.current().map(|p| p.identity);
+            let identity = self.current().map(|process| process.identity);
             self.sort_rows();
             if let Some(i) = self
                 .rows
                 .iter()
-                .position(|r| Some(self.snapshot.processes[r.process].identity) == id)
+                .position(|row| Some(self.snapshot.processes[row.process].identity) == identity)
             {
                 self.cursor = i
             }
         }
     }
     pub fn refilter(&mut self) {
-        let q = Query::new(&self.query);
+        let query = Query::new(&self.query);
         let mut scratch = Scratch::default();
         self.rows.clear();
-        for (i, p) in self.snapshot.processes.iter().enumerate() {
+        for (i, process) in self.snapshot.processes.iter().enumerate() {
             let index = &self.indices[i];
             if self.locked {
-                for (j, u) in p.usages.iter().enumerate() {
-                    if u.lock.is_none() {
+                for (j, usage) in process.usages.iter().enumerate() {
+                    if usage.lock.is_none() {
                         continue;
                     }
-                    let file_q = q.file_terms(&index.metadata, &mut scratch);
+                    let file_q = query.file_terms(&index.metadata, &mut scratch);
                     if file_q.matches(&index.usages[j], &mut scratch) {
-                        let score = q
+                        let score = query
                             .score(&index.metadata, &mut scratch)
-                            .max(q.score(&index.usages[j], &mut scratch));
+                            .max(query.score(&index.usages[j], &mut scratch));
                         self.rows.push(Row {
                             process: i,
                             usages: vec![j],
@@ -227,19 +239,19 @@ impl App {
                         })
                     }
                 }
-            } else if index.matches(&q, &mut scratch) {
-                let file_q = q.file_terms(&index.metadata, &mut scratch);
+            } else if index.matches(&query, &mut scratch) {
+                let file_q = query.file_terms(&index.metadata, &mut scratch);
                 let usages: Vec<_> = index
                     .usages
                     .iter()
                     .enumerate()
-                    .filter_map(|(j, f)| file_q.matches(f, &mut scratch).then_some(j))
+                    .filter_map(|(j, fields)| file_q.matches(fields, &mut scratch).then_some(j))
                     .collect();
                 if !usages.is_empty() {
                     self.rows.push(Row {
                         process: i,
                         usages,
-                        score: index.score(&q, &mut scratch),
+                        score: index.score(&query, &mut scratch),
                     })
                 }
             }
@@ -251,59 +263,67 @@ impl App {
         let processes = &self.snapshot.processes;
         let sort = self.sort;
         self.rows.sort_by(|a, b| {
-            let p = &processes[a.process];
-            let q = &processes[b.process];
-            let cmp = match sort {
+            let left_process = &processes[a.process];
+            let right_process = &processes[b.process];
+            let ordering = match sort {
                 Sort::Relevance => b.score.cmp(&a.score),
-                Sort::Name => p.name.to_lowercase().cmp(&q.name.to_lowercase()),
-                Sort::Pid => p.identity.pid.cmp(&q.identity.pid),
-                Sort::Memory => q.memory.cmp(&p.memory),
-                Sort::Cpu => q
+                Sort::Name => left_process
+                    .name
+                    .to_lowercase()
+                    .cmp(&right_process.name.to_lowercase()),
+                Sort::Pid => left_process.identity.pid.cmp(&right_process.identity.pid),
+                Sort::Memory => right_process.memory.cmp(&left_process.memory),
+                Sort::Cpu => right_process
                     .cpu
-                    .partial_cmp(&p.cpu)
+                    .partial_cmp(&left_process.cpu)
                     .unwrap_or(std::cmp::Ordering::Equal),
             };
-            cmp.then(p.identity.pid.cmp(&q.identity.pid))
+            ordering.then(left_process.identity.pid.cmp(&right_process.identity.pid))
         });
     }
     pub fn filter_details(&mut self) {
         self.usage_rows.clear();
-        let Some(id) = self.detail_id else { return };
+        let Some(identity) = self.detail_id else {
+            return;
+        };
         let Some(i) = self
             .snapshot
             .processes
             .iter()
-            .position(|p| p.identity == id)
+            .position(|process| process.identity == identity)
         else {
             return;
         };
-        let p = &self.snapshot.processes[i];
-        let q = Query::new(&self.detail_query);
+        let process = &self.snapshot.processes[i];
+        let query = Query::new(&self.detail_query);
         let mut scratch = Scratch::default();
         let mut ranked = Vec::new();
-        for (j, u) in p.usages.iter().enumerate() {
-            if self.detail_locks && u.lock.is_none()
-                || self.detail_scope.as_ref().is_some_and(|scope| scope != u)
+        for (j, usage) in process.usages.iter().enumerate() {
+            if self.detail_locks && usage.lock.is_none()
+                || self
+                    .detail_scope
+                    .as_ref()
+                    .is_some_and(|scope| scope != usage)
             {
                 continue;
             }
             let fields = &self.indices[i].usages[j];
-            if q.matches(fields, &mut scratch) {
-                ranked.push((j, q.score(fields, &mut scratch)))
+            if query.matches(fields, &mut scratch) {
+                ranked.push((j, query.score(fields, &mut scratch)))
             }
         }
-        ranked.sort_by_key(|&(_, s)| std::cmp::Reverse(s));
+        ranked.sort_by_key(|&(_, text)| std::cmp::Reverse(text));
         self.usage_rows = ranked.into_iter().map(|(i, _)| i).collect();
         self.usage_cursor = self
             .usage_cursor
             .min(self.usage_rows.len().saturating_sub(1));
         self.path_page = 0;
     }
-    pub fn paste(&mut self, s: &str) {
+    pub fn paste(&mut self, text: &str) {
         if !self.editing {
             return;
         }
-        for c in s.chars().filter(|c| !c.is_control()) {
+        for c in text.chars().filter(|c| !c.is_control()) {
             self.insert(c)
         }
     }
@@ -334,8 +354,8 @@ impl App {
         if self.input().chars().count() >= 256 {
             return;
         }
-        let at = self.input_cursor;
-        self.input_mut().insert(at, c);
+        let position = self.input_cursor;
+        self.input_mut().insert(position, c);
         self.input_cursor += c.len_utf8();
         self.changed()
     }
@@ -358,17 +378,17 @@ impl App {
                     self.changed()
                 }
                 K::Backspace => {
-                    let at = self.input_cursor;
-                    if let Some((prev, _)) = self.input()[..at].char_indices().next_back() {
-                        self.input_mut().drain(prev..at);
+                    let position = self.input_cursor;
+                    if let Some((prev, _)) = self.input()[..position].char_indices().next_back() {
+                        self.input_mut().drain(prev..position);
                         self.input_cursor = prev;
                         self.changed()
                     }
                 }
                 K::Delete => {
-                    let at = self.input_cursor;
-                    if let Some(c) = self.input()[at..].chars().next() {
-                        self.input_mut().drain(at..at + c.len_utf8());
+                    let position = self.input_cursor;
+                    if let Some(c) = self.input()[position..].chars().next() {
+                        self.input_mut().drain(position..position + c.len_utf8());
                         self.changed()
                     }
                 }
@@ -508,16 +528,16 @@ impl App {
                 self.refilter()
             }
             K::Char(' ') => {
-                if let Some(id) = self.current().map(|p| p.identity)
-                    && !self.selected.remove(&id)
+                if let Some(identity) = self.current().map(|process| process.identity)
+                    && !self.selected.remove(&identity)
                 {
-                    self.selected.insert(id);
+                    self.selected.insert(identity);
                 }
             }
             K::Char('i') => self.hide_inspector = !self.hide_inspector,
             K::Tab | K::Right => {
-                if let Some(p) = self.current() {
-                    let mut nodes: Vec<_> = p
+                if let Some(process) = self.current() {
+                    let mut nodes: Vec<_> = process
                         .ancestors
                         .iter()
                         .rev()
@@ -527,8 +547,8 @@ impl App {
                         })
                         .collect();
                     nodes.push(ActionTarget {
-                        identity: p.identity,
-                        name: p.name.clone(),
+                        identity: process.identity,
+                        name: process.name.clone(),
                     });
                     let cursor = nodes.len() - 1;
                     self.tree = Some(Tree { nodes, cursor })
@@ -548,16 +568,16 @@ impl App {
         Effect::None
     }
     pub fn select_all(&mut self) {
-        let all = self.rows.iter().all(|r| {
+        let all = self.rows.iter().all(|row| {
             self.selected
-                .contains(&self.snapshot.processes[r.process].identity)
+                .contains(&self.snapshot.processes[row.process].identity)
         });
-        for r in &self.rows {
-            let id = self.snapshot.processes[r.process].identity;
+        for row in &self.rows {
+            let identity = self.snapshot.processes[row.process].identity;
             if all {
-                self.selected.remove(&id);
+                self.selected.remove(&identity);
             } else {
-                self.selected.insert(id);
+                self.selected.insert(identity);
             }
         }
     }
@@ -583,10 +603,10 @@ impl App {
         let Some(row) = self.rows.get(self.cursor) else {
             return;
         };
-        let p = &self.snapshot.processes[row.process];
-        self.detail_id = Some(p.identity);
+        let process = &self.snapshot.processes[row.process];
+        self.detail_id = Some(process.identity);
         self.detail_scope = if self.locked {
-            Some(p.usages[row.usages[0]].clone())
+            Some(process.usages[row.usages[0]].clone())
         } else {
             None
         };
@@ -618,10 +638,10 @@ impl App {
             self.parent_action = tree.cursor + 1 < tree.nodes.len();
             self.pending.push(target)
         } else if self.screen == Screen::Details {
-            if let Some(p) = self.detail() {
+            if let Some(process) = self.detail() {
                 self.pending.push(ActionTarget {
-                    identity: p.identity,
-                    name: p.name.clone(),
+                    identity: process.identity,
+                    name: process.name.clone(),
                 })
             }
         } else if !self.selected.is_empty() {
@@ -629,27 +649,27 @@ impl App {
                 self.snapshot
                     .processes
                     .iter()
-                    .filter(|p| self.selected.contains(&p.identity))
-                    .map(|p| ActionTarget {
-                        identity: p.identity,
-                        name: p.name.clone(),
+                    .filter(|process| self.selected.contains(&process.identity))
+                    .map(|process| ActionTarget {
+                        identity: process.identity,
+                        name: process.name.clone(),
                     }),
             )
         } else if matches!(key, K::Char('K' | 'X')) {
             let mut seen = HashSet::new();
             for row in &self.rows {
-                let p = &self.snapshot.processes[row.process];
-                if seen.insert(p.identity) {
+                let process = &self.snapshot.processes[row.process];
+                if seen.insert(process.identity) {
                     self.pending.push(ActionTarget {
-                        identity: p.identity,
-                        name: p.name.clone(),
+                        identity: process.identity,
+                        name: process.name.clone(),
                     })
                 }
             }
-        } else if let Some(p) = self.current() {
+        } else if let Some(process) = self.current() {
             self.pending.push(ActionTarget {
-                identity: p.identity,
-                name: p.name.clone(),
+                identity: process.identity,
+                name: process.name.clone(),
             })
         }
         if !self.pending.is_empty() {
@@ -680,7 +700,10 @@ impl App {
                     self.stopping = true;
                     self.status = "Requesting termination…".into();
                     return Effect::Kill(
-                        self.pending.drain(..).map(|p| p.identity).collect(),
+                        self.pending
+                            .drain(..)
+                            .map(|process| process.identity)
+                            .collect(),
                         self.force,
                     );
                 }

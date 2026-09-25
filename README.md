@@ -114,18 +114,18 @@ Releases include `checksums.txt` for SHA-256 verification.
 
 ### Build from source
 
-Requires Go 1.26 or newer. From a checkout of this repository:
+Install Rust with rustup. The repository pins its toolchain. From a checkout:
 
 ```sh
-go build -o bin/oflh ./cmd/oflh
-./bin/oflh .
+cargo build --release --locked --bin oflh
+./target/release/oflh .
 ```
 
 On Windows:
 
 ```powershell
-go build -o bin/oflh.exe ./cmd/oflh
-.\bin\oflh.exe .
+cargo build --release --locked --bin oflh
+.\target\release\oflh.exe .
 ```
 
 ## Getting started

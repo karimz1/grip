@@ -4,7 +4,19 @@ const VERSION: &str = match option_env!("OFLH_VERSION") {
     Some(v) => v,
     None => env!("CARGO_PKG_VERSION"),
 };
-fn run() -> Result<(), (u8, String)> {
+#[derive(Debug, thiserror::Error)]
+enum CliError {
+    #[error("{0}")]
+    Usage(String),
+    #[error(transparent)]
+    Core(#[from] oflh_core::Error),
+    #[error(transparent)]
+    Terminal(#[from] std::io::Error),
+    #[error("an interactive terminal is required; run oflh . in a terminal")]
+    NotInteractive,
+}
+
+fn run() -> Result<(), CliError> {
     let mut path = None;
     let mut positional = false;
     for arg in std::env::args_os().skip(1) {
@@ -24,30 +36,37 @@ fn run() -> Result<(), (u8, String)> {
                 return Ok(());
             }
             if arg.to_string_lossy().starts_with('-') {
-                return Err((2, format!("unknown option: {}", arg.to_string_lossy())));
+                return Err(CliError::Usage(format!(
+                    "unknown option: {}",
+                    arg.to_string_lossy()
+                )));
             }
         }
         if path.replace(arg).is_some() {
-            return Err((2, "expected one path; quote paths containing spaces".into()));
+            return Err(CliError::Usage(
+                "expected one path; quote paths containing spaces".into(),
+            ));
         }
         positional = true;
     }
-    let target = oflh_core::Target::new(path.unwrap_or_else(|| OsString::from(".")))
-        .map_err(|e| (1, e.to_string()))?;
+    let target = oflh_core::Target::new(path.unwrap_or_else(|| OsString::from(".")))?;
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        return Err((
-            1,
-            "an interactive terminal is required; run oflh . in a terminal".into(),
-        ));
+        return Err(CliError::NotInteractive);
     }
-    let backend = oflh_platform::native().map_err(|e| (1, e.to_string()))?;
-    oflh_tui::run(target, VERSION.into(), backend).map_err(|e| (1, e.to_string()))
+    let backend = oflh_platform::native()?;
+    oflh_tui::run(target, VERSION.into(), backend)?;
+    Ok(())
 }
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
-        Err((code, error)) => {
-            eprintln!("oflh: {}", oflh_core::safe(&error));
+        Err(error) => {
+            let code = if matches!(error, CliError::Usage(_)) {
+                2
+            } else {
+                1
+            };
+            eprintln!("oflh: {}", oflh_core::safe(&error.to_string()));
             ExitCode::from(code)
         }
     }

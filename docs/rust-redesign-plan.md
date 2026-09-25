@@ -1,6 +1,6 @@
 # Rust redesign and migration plan
 
-Status: proposed design, based on repository inspection on 2026-09-24. No application code has been changed. Performance observations below are hypotheses from source inspection, not profiling results.
+Status: implementation reference, originally proposed on 2026-09-24. The Rust workspace and native release pipeline are implemented on `architecture/redesign-in-rust`. The sections below preserve the design rationale; see `development.md` for current commands and `rust-validation.md` for measured results and remaining validation scope.
 
 ## Objective and scope
 
@@ -110,4 +110,8 @@ Completion requires behavioral parity, native six-target validation, reviewed un
 
 ## Current validation status
 
-This is a source-informed design review. No benchmarks or test suite were run for this planning-only change. Actual speedups, native Rust API integration, and cross-platform visual parity remain unverified until implementation.
+The Rust application, native backends, terminal tests, and six-target release
+pipeline are implemented. The former Go code is retained in Git history at
+`65556d75d951ab5dd74145d9707058020969c48e`. See [validation report](rust-validation.md).
+The exploratory benchmark/fuzzing ideas above are not all completed release gates;
+only checks and measurements explicitly recorded in that report have been run.

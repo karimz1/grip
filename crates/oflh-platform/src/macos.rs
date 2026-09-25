@@ -78,7 +78,7 @@ impl Info for Region {
 fn info<T: Info>(pid: u32, arg: u64) -> Result<T> {
     let mut out = MaybeUninit::<T>::zeroed();
     // SAFETY: Info is private and implemented only for the matching POD C layouts above.
-    let n = unsafe {
+    let returned = unsafe {
         libc::proc_pidinfo(
             pid as i32,
             T::FLAVOR,
@@ -87,7 +87,7 @@ fn info<T: Info>(pid: u32, arg: u64) -> Result<T> {
             size_of::<T>() as i32,
         )
     };
-    if n != size_of::<T>() as i32 {
+    if returned != size_of::<T>() as i32 {
         return Err(io("inspect process", std::io::Error::last_os_error()));
     }
     // SAFETY: a full record was returned, and all bit patterns of the POD fields are valid.
@@ -100,28 +100,32 @@ fn bytes(chars: &[i8]) -> Vec<u8> {
         .map(|&c| c as u8)
         .collect()
 }
-fn vnode_path(v: &libc::vnode_info_path) -> PathBuf {
-    let b: Vec<u8> = v
+fn vnode_path(vnode: &libc::vnode_info_path) -> PathBuf {
+    let bsd_info: Vec<u8> = vnode
         .vip_path
         .iter()
         .flatten()
         .take_while(|&&c| c != 0)
         .map(|&c| c as u8)
         .collect();
-    PathBuf::from(std::ffi::OsStr::from_bytes(&b))
+    PathBuf::from(std::ffi::OsStr::from_bytes(&bsd_info))
 }
-fn process(pid: u32) -> Result<(Process, u32)> {
-    let b: libc::proc_bsdinfo = info(pid, 0)?;
-    let name = bytes(if b.pbi_name[0] == 0 {
-        &b.pbi_comm
+fn read_process(pid: u32) -> Result<(Process, u32)> {
+    let bsd_info: libc::proc_bsdinfo = info(pid, 0)?;
+    let name = bytes(if bsd_info.pbi_name[0] == 0 {
+        &bsd_info.pbi_comm
     } else {
-        &b.pbi_name
+        &bsd_info.pbi_name
     });
     let mut path = [0u8; 4096];
     // SAFETY: writable buffer of the supplied length; proc_pidpath returns a bounded C string.
-    let n = unsafe { libc::proc_pidpath(pid as i32, path.as_mut_ptr().cast(), path.len() as u32) };
-    let executable = if n > 0 {
-        let end = path.iter().position(|b| *b == 0).unwrap_or(path.len());
+    let returned =
+        unsafe { libc::proc_pidpath(pid as i32, path.as_mut_ptr().cast(), path.len() as u32) };
+    let executable = if returned > 0 {
+        let end = path
+            .iter()
+            .position(|bsd_info| *bsd_info == 0)
+            .unwrap_or(path.len());
         PathBuf::from(std::ffi::OsStr::from_bytes(&path[..end]))
     } else {
         PathBuf::new()
@@ -130,36 +134,36 @@ fn process(pid: u32) -> Result<(Process, u32)> {
         Process {
             identity: Identity {
                 pid,
-                started: b.pbi_start_tvsec,
-                started_sub: b.pbi_start_tvusec,
+                started: bsd_info.pbi_start_tvsec,
+                started_sub: bsd_info.pbi_start_tvusec,
             },
             name: String::from_utf8_lossy(&name).into_owned(),
-            parent: b.pbi_ppid,
+            parent: bsd_info.pbi_ppid,
             executable,
             ..Process::default()
         },
-        b.pbi_uid,
+        bsd_info.pbi_uid,
     ))
 }
-fn identity(pid: u32) -> Result<Identity> {
-    let b: libc::proc_bsdinfo = info(pid, 0)?;
+fn read_identity(pid: u32) -> Result<Identity> {
+    let bsd_info: libc::proc_bsdinfo = info(pid, 0)?;
     Ok(Identity {
         pid,
-        started: b.pbi_start_tvsec,
-        started_sub: b.pbi_start_tvusec,
+        started: bsd_info.pbi_start_tvsec,
+        started_sub: bsd_info.pbi_start_tvusec,
     })
 }
-fn add(p: &mut Process, target: &Target, path: PathBuf, relation: Relation, access: Access) {
+fn add(process: &mut Process, target: &Target, path: PathBuf, relation: Relation, access: Access) {
     if path.as_os_str().is_empty() || target.directory && !target.contains(&path) {
         return;
     }
-    let meta = if target.directory {
+    let metadata = if target.directory {
         None
     } else {
         fs::metadata(&path).ok()
     };
-    if target.matches(&path, meta.as_ref()) {
-        p.usages.push(Usage {
+    if target.matches(&path, metadata.as_ref()) {
+        process.usages.push(Usage {
             path,
             relation,
             access,
@@ -183,17 +187,17 @@ impl Backend for Native {
         loop {
             cancel.check()?;
             // SAFETY: initialized integer vector is writable for exactly the supplied byte size.
-            let n = unsafe {
+            let returned = unsafe {
                 libc::proc_listallpids(
                     pids.as_mut_ptr().cast(),
                     (pids.len() * size_of::<i32>()) as i32,
                 )
             };
-            if n < 0 {
+            if returned < 0 {
                 return Err(io("enumerate processes", std::io::Error::last_os_error()));
             }
-            if (n as usize) < pids.len() {
-                pids.truncate(n as usize);
+            if (returned as usize) < pids.len() {
+                pids.truncate(returned as usize);
                 break;
             }
             if pids.len() > 1_000_000 {
@@ -212,17 +216,23 @@ impl Backend for Native {
                 continue;
             }
             let pid = pid as u32;
-            let Ok((mut p, uid)) = process(pid) else {
+            let Ok((mut process, uid)) = read_process(pid) else {
                 limited += 1;
                 continue;
             };
             let mut partial = false;
-            let exe = p.executable.clone();
-            add(&mut p, target, exe, Relation::Executable, Access::Execute);
+            let exe = process.executable.clone();
+            add(
+                &mut process,
+                target,
+                exe,
+                Relation::Executable,
+                Access::Execute,
+            );
             if let Ok(cwd) = info::<libc::proc_vnodepathinfo>(pid, 0) {
-                p.cwd = vnode_path(&cwd.pvi_cdir);
-                let path = p.cwd.clone();
-                add(&mut p, target, path, Relation::Cwd, Access::Directory)
+                process.cwd = vnode_path(&cwd.pvi_cdir);
+                let path = process.cwd.clone();
+                add(&mut process, target, path, Relation::Cwd, Access::Directory)
             } else {
                 partial = true
             }
@@ -232,7 +242,7 @@ impl Backend for Native {
                 let len = needed as usize / size_of::<libc::proc_fdinfo>() + 128;
                 let mut fds = Vec::<libc::proc_fdinfo>::with_capacity(len);
                 // SAFETY: spare capacity provides len correctly aligned writable records. Length stays zero until validated.
-                let n = unsafe {
+                let returned = unsafe {
                     libc::proc_pidinfo(
                         pid as i32,
                         1,
@@ -241,35 +251,35 @@ impl Backend for Native {
                         (len * size_of::<libc::proc_fdinfo>()) as i32,
                     )
                 };
-                if n <= 0 {
+                if returned <= 0 {
                     partial = true
-                } else if n as usize > len * size_of::<libc::proc_fdinfo>() {
+                } else if returned as usize > len * size_of::<libc::proc_fdinfo>() {
                     return Err(Error::Unavailable(
                         "invalid libproc descriptor length".into(),
                     ));
                 } else {
-                    if n as usize == len * size_of::<libc::proc_fdinfo>() {
+                    if returned as usize == len * size_of::<libc::proc_fdinfo>() {
                         partial = true
                     }
                     // SAFETY: native call initialized exactly the complete records covered by n bytes.
-                    unsafe { fds.set_len(n as usize / size_of::<libc::proc_fdinfo>()) };
-                    for fd in fds {
+                    unsafe { fds.set_len(returned as usize / size_of::<libc::proc_fdinfo>()) };
+                    for descriptor in fds {
                         cancel.check()?;
-                        if fd.proc_fdtype != 1 {
+                        if descriptor.proc_fdtype != 1 {
                             continue;
                         }
                         let mut vnode = MaybeUninit::<VnodeFd>::zeroed();
                         // SAFETY: flavor 2 writes the VnodeFd POD layout into an exact-sized buffer.
-                        let n = unsafe {
+                        let returned = unsafe {
                             libc::proc_pidfdinfo(
                                 pid as i32,
-                                fd.proc_fd,
+                                descriptor.proc_fd,
                                 2,
                                 vnode.as_mut_ptr().cast(),
                                 size_of::<VnodeFd>() as i32,
                             )
                         };
-                        if n != size_of::<VnodeFd>() as i32 {
+                        if returned != size_of::<VnodeFd>() as i32 {
                             partial = true;
                             continue;
                         }
@@ -282,7 +292,7 @@ impl Backend for Native {
                             _ => Access::Unknown,
                         };
                         add(
-                            &mut p,
+                            &mut process,
                             target,
                             vnode_path(&vnode.vnode),
                             Relation::Open,
@@ -311,7 +321,7 @@ impl Backend for Native {
                     }
                 };
                 add(
-                    &mut p,
+                    &mut process,
                     target,
                     vnode_path(&region.vnode),
                     Relation::Mapped,
@@ -332,28 +342,30 @@ impl Backend for Native {
             if partial {
                 limited += 1
             }
-            if !p.usages.is_empty() && identity(pid).is_ok_and(|id| id == p.identity) {
-                p.user = users
+            if !process.usages.is_empty()
+                && read_identity(pid).is_ok_and(|identity| identity == process.identity)
+            {
+                process.user = users
                     .entry(uid)
                     .or_insert_with(|| super::unix::username(uid))
                     .clone();
-                let mut parent = p.parent;
+                let mut parent = process.parent;
                 while parent > 0
                     && parent != pid
-                    && p.ancestors.len() < 8
-                    && !p.ancestors.iter().any(|a| a.identity.pid == parent)
+                    && process.ancestors.len() < 8
+                    && !process.ancestors.iter().any(|a| a.identity.pid == parent)
                 {
                     cancel.check()?;
-                    match process(parent) {
+                    match read_process(parent) {
                         Ok((a, _)) => {
-                            p.ancestors.push(Ancestor {
+                            process.ancestors.push(Ancestor {
                                 identity: a.identity,
                                 name: a.name,
                             });
                             parent = a.parent
                         }
                         Err(_) => {
-                            p.ancestors.push(Ancestor {
+                            process.ancestors.push(Ancestor {
                                 identity: Identity {
                                     pid: parent,
                                     ..Identity::default()
@@ -364,7 +376,7 @@ impl Backend for Native {
                         }
                     }
                 }
-                snapshot.processes.push(p);
+                snapshot.processes.push(process);
             }
         }
         if limited > 0 {
@@ -377,7 +389,7 @@ impl Backend for Native {
         let ids = snapshot
             .processes
             .iter()
-            .map(|p| p.identity)
+            .map(|process| process.identity)
             .collect::<Vec<_>>();
         apply_metrics(&mut snapshot, self.sample(&ids, cancel)?);
         Ok(snapshot)
@@ -388,42 +400,41 @@ impl Backend for Native {
         cancel: &Cancellation,
     ) -> Result<Vec<(Identity, Metrics)>> {
         let mut raw = Vec::with_capacity(ids.len());
-        for &id in ids {
+        for &identity in ids {
             cancel.check()?;
-            if !identity(id.pid).is_ok_and(|i| i == id) {
+            if !read_identity(identity.pid).is_ok_and(|i| i == identity) {
                 continue;
             }
             let mut usage = MaybeUninit::<libc::rusage_info_v0>::zeroed();
             // SAFETY: flavor zero expects rusage_info_v0 storage, despite the void** typedef in Apple's API.
             let code =
-                unsafe { libc::proc_pid_rusage(id.pid as i32, 0, usage.as_mut_ptr().cast()) };
-            if code != 0 || !identity(id.pid).is_ok_and(|i| i == id) {
+                unsafe { libc::proc_pid_rusage(identity.pid as i32, 0, usage.as_mut_ptr().cast()) };
+            if code != 0 || !read_identity(identity.pid).is_ok_and(|i| i == identity) {
                 continue;
             }
             // SAFETY: successful call initialized the POD structure.
             let usage = unsafe { usage.assume_init() };
             raw.push((
-                id,
+                identity,
                 usage.ri_user_time.saturating_add(usage.ri_system_time),
                 Some(usage.ri_resident_size),
             ));
         }
-        let total = self
-            .sampler
-            .clock()
-            .saturating_mul(std::thread::available_parallelism().map_or(1, |n| n.get()) as u64);
+        let total = self.sampler.clock().saturating_mul(
+            std::thread::available_parallelism().map_or(1, |returned| returned.get()) as u64,
+        );
         Ok(self.sampler.sample(raw, total))
     }
-    fn terminate(&mut self, id: Identity, force: bool, cancel: &Cancellation) -> Result<()> {
-        id.validate()?;
+    fn terminate(&mut self, identity: Identity, force: bool, cancel: &Cancellation) -> Result<()> {
+        identity.validate()?;
         cancel.check()?;
-        if identity(id.pid)? != id {
+        if read_identity(identity.pid)? != identity {
             return Err(Error::Changed);
         }
         // SAFETY: positive validated PID and valid signal. macOS has no public pidfd; a residual race remains.
         if unsafe {
             libc::kill(
-                id.pid as i32,
+                identity.pid as i32,
                 if force { libc::SIGKILL } else { libc::SIGTERM },
             )
         } != 0
@@ -437,14 +448,14 @@ fn detect_locks(snapshot: &mut Snapshot, cancel: &Cancellation) -> Result<()> {
     let paths: HashSet<_> = snapshot
         .processes
         .iter()
-        .flat_map(|p| p.usages.iter().map(|u| u.path.clone()))
+        .flat_map(|process| process.usages.iter().map(|u| u.path.clone()))
         .collect();
     for path in paths {
         cancel.check()?;
-        let Ok(meta) = fs::metadata(&path) else {
+        let Ok(metadata) = fs::metadata(&path) else {
             continue;
         };
-        if !meta.is_file() {
+        if !metadata.is_file() {
             continue;
         }
         let Ok(file) = OpenOptions::new()
@@ -457,7 +468,7 @@ fn detect_locks(snapshot: &mut Snapshot, cancel: &Cancellation) -> Result<()> {
         let Ok(opened) = file.metadata() else {
             continue;
         };
-        if meta.dev() != opened.dev() || meta.ino() != opened.ino() {
+        if metadata.dev() != opened.dev() || metadata.ino() != opened.ino() {
             continue;
         }
         let mut lock = libc::flock {
@@ -474,12 +485,14 @@ fn detect_locks(snapshot: &mut Snapshot, cancel: &Cancellation) -> Result<()> {
         {
             continue;
         }
-        if let Some(p) = snapshot
+        if let Some(process) = snapshot
             .processes
             .iter_mut()
-            .find(|p| p.identity.pid == lock.l_pid as u32)
+            .find(|process| process.identity.pid == lock.l_pid as u32)
         {
-            if !identity(p.identity.pid).is_ok_and(|id| id == p.identity) {
+            if !read_identity(process.identity.pid)
+                .is_ok_and(|identity| identity == process.identity)
+            {
                 continue;
             }
             let access = if lock.l_type == libc::F_WRLCK {
@@ -492,7 +505,7 @@ fn detect_locks(snapshot: &mut Snapshot, cancel: &Cancellation) -> Result<()> {
             } else {
                 "EOF".into()
             };
-            p.usages.push(Usage {
+            process.usages.push(Usage {
                 path,
                 relation: Relation::Locked,
                 access,

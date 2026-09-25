@@ -1,105 +1,58 @@
-# Development
+# Rust development
 
-## Test locally
+Install Rust through rustup; `rust-toolchain.toml` pins the toolchain used by CI.
+Run the repository gates with:
 
 ```sh
-go test ./...
-go test -race ./...    # where the Go race detector is supported
-go vet ./...
-python3 -m unittest discover -s scripts -p 'test_*.py'
+cargo xtask check
+cargo build --release --locked --bin oflh
+./target/release/oflh .
 ```
 
-The UI depends only on the scanner interface. Platform backends stay in
-`internal/scanner`; path and usage models live in `internal/model`.
-Python is used only for release tooling, never by the installed application.
+`check` runs standard formatting, Clippy with warnings denied, and workspace tests.
+Native integration tests also require a C compiler (Clang/GCC on Unix, MSVC or
+MinGW on Windows). The independent fixture in
+`crates/oflh-platform/tests/fixtures/lock-fixture.c` exercises interoperability
+with native locks. It is compiled into a temporary test directory only.
 
-Release and Homebrew publishing details are documented in [Releasing](releasing.md).
+## Architecture
 
-## Native platform stability gate
+- `oflh-core`: native paths, process birth identities, observations, typed errors,
+  compiled search queries, and reusable search scratch buffers.
+- `oflh-platform`: Linux procfs/pidfd, macOS libproc/fcntl, and Windows Restart
+  Manager/Toolhelp/owned handles. Platform-specific unsafe calls remain here.
+- `oflh-tui`: Ratatui rendering, keyboard state, and a background worker with a
+  bounded pending-work slot, cooperative cancellation, and generation checks.
+- `oflh`: argument handling and application composition.
+- `xtask`: developer validation, release packaging, checksums, and Homebrew output.
 
-CI runs natively on Linux, Windows and macOS, on both amd64 and arm64. The release
-workflow depends on the same matrix. No core feature test is skipped by OS.
+The UI renders before scanning completes. Idle screens do not redraw on a timer.
+CPU follow-up sampling reads metrics without repeating file discovery. Queries
+and search fields are compiled per edit/snapshot, with scratch buffers reused.
 
-- `TestNativeFeatureContract` starts a pipe-synchronized child, checks discovery,
-  RAM, positive two-sample CPU from a busy helper, actionable parent identity, and the backend's lock evidence.
-  It rejects a stale identity, stops only the test child, and verifies unchanged
-  file contents.
-- `TestNativeLockModes` covers POSIX read, write, and bounded-range locks on
-  Unix, and read, write, and delete sharing conflicts on Windows.
-- `TestNativeLockReleaseRefresh` releases a file while its helper stays alive,
-  then verifies that another scan removes the lock evidence.
-- `TestNativeParentTermination` discovers an isolated helper's parent, rejects a
-  stale parent identity, force terminates the real parent, and verifies that the
-  child releases its lock when the parent's control pipe closes. This tests the
-  helper's lifecycle, not a general guarantee that stopping parents stops children.
-- `TestNativeOpenFileIsNotALock` verifies that a shared ordinary open file is not
-  mislabeled as a lock.
-- `TestProgramSmokeWorkflow` runs Bubble Tea's event loop, renderer and keyboard
-  decoder with pipe input. It exercises search inheritance, lock filtering, tree
-  focus, confirmation, post-termination focus reset, tab switching, select-all,
-  details refresh/auto-refresh, resize and quit. Termination uses an isolated fake backend.
-- `TestProgramSmokeNativeStartup` starts the real native scanner inside the TUI
-  and verifies that rendering and quit remain responsive during a scan. Completed
-  native scans are validated independently by the feature contract.
-- Both TUI smoke tests repeat three times per matrix runner. Unit tests, vet,
-  standalone builds and packaging checks also run. The race detector runs where
-  Go supports it (currently excluded only on Windows arm64).
+Actions use PID plus process birth identity. Refreshes cannot silently redirect an
+action to a reused PID. Confirmation defaults to Cancel and exposes hidden
+selections. A focused ancestry tree retains the identities originally displayed.
+Native handles/descriptors use RAII, and terminal restoration survives unwinding.
 
-These are headless terminal-stream tests, not claims of visual validation in
-every terminal emulator. Windows/macOS runtime verification requires their native
-CI jobs; cross-compilation alone is insufficient. The README documents each OS's
-lock-evidence scope. Never replace unknown information with invented lock owners.
+## Validation
 
-## Native lock fixture
+Native CI tests Linux, macOS, and Windows on both x86-64 and ARM64. Checks cover
+real locks and release, sharing modes, cancellation, stale/protected identities,
+resource sampling, parent termination, Unicode paths, and independent C fixtures.
+Windows termination is asynchronous: tests wait for child exit before inspecting
+file contents. Unix additionally covers mappings and working directories; Linux
+covers deleted files and hard links.
 
-Scanner integration tests use a small native C program located at:
+A real PTY/ConPTY test exercises startup, input, resizing, and quit on each native
+target. State tests cover confirmation and identity safety. Text golden snapshots
+cover process, lock, detail, and compact screens. Review intentional changes before
+updating them with `OFLH_UPDATE_SNAPSHOTS=1 cargo test -p oflh-tui golden_screens`.
+These checks do not establish identical rendering in every terminal emulator.
 
-    internal/scanner/testdata/lockfixture/lock-fixture.c
+Unit tests live in `#[cfg(test)]` modules; Cargo integration tests are separate
+executables. Release packaging builds only `oflh`, so test harnesses, C fixtures,
+benchmarks, and developer tooling are absent from the distributed application.
 
-The fixture creates real operating-system file locks so the scanner can be
-tested against native locking behavior rather than mocks. By completely bypassing 
-the Go runtime and acquiring locks via authentic native OS interfaces, we guarantee
-that the scanner reliably discovers locks held by real-world third-party processes.
-
-The implementation uses the platform's native locking mechanism:
-
-- Windows: `CreateFile` (with sharing denial) and `LockFileEx`
-- macOS: POSIX `fcntl`
-- Linux: POSIX `fcntl`
-
-The fixture supports several modes:
-
-    lockfixture open  <file>
-    lockfixture read  <file>
-    lockfixture write <file>
-    lockfixture range <file> <start> <length>
-
-`open` keeps a file handle open without acquiring a byte-range lock.
-
-`read` acquires a shared/read lock over the file.
-
-`write` acquires an exclusive/write lock over the file.
-
-`range` acquires an exclusive/write lock over a specific byte range.
-
-The Go integration tests compile the fixture into a temporary directory and
-start it as a child process. The test runner passes standard input via a pipe 
-to intentionally keep the C program alive. The fixture reports when the requested 
-lock is ready, allowing the scanner to inspect the live process and definitively 
-verify the detected lock state.
-
-Compiled fixture binaries are temporary test artifacts and are not committed
-to the repository.
-
-### Requirements
-
-Running the native integration tests requires a C compiler:
-
-- macOS: Clang (`cc`), included with Xcode Command Line Tools
-- Linux: GCC or Clang (`cc`)
-- Windows: MSVC (`cl`) or MinGW GCC
-
-The fixture intentionally uses native OS locking semantics. Lock behavior is
-therefore not expected to be identical across platforms. In particular,
-POSIX locks on macOS and Linux are advisory and do not necessarily prevent
-unrelated processes from modifying, renaming, or deleting a file.
+See [AGENTS.md](../AGENTS.md) for persistent coding requirements and
+[Releasing](releasing.md) for release procedures.

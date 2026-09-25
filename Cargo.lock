@@ -530,6 +530,7 @@ dependencies = [
  "oflh-tui",
  "portable-pty",
  "tempfile",
+ "thiserror 2.0.21",
  "vt100",
 ]
 

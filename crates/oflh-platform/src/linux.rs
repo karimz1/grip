@@ -12,54 +12,57 @@ pub struct Native {
 }
 #[derive(Debug)]
 struct Stat {
-    id: Identity,
+    identity: Identity,
     name: String,
     parent: u32,
     ticks: u64,
     rss: Option<u64>,
 }
 fn stat(pid: u32) -> Result<Stat> {
-    let b = fs::read(format!("/proc/{pid}/stat")).map_err(|e| io("read process identity", e))?;
-    parse_stat(pid, &b).ok_or(Error::Changed)
+    let bytes = fs::read(format!("/proc/{pid}/stat"))
+        .map_err(|error| io("read process identity", error))?;
+    parse_stat(pid, &bytes).ok_or(Error::Changed)
 }
-fn parse_stat(pid: u32, b: &[u8]) -> Option<Stat> {
-    let start = b.iter().position(|b| *b == b'(')?;
-    let end = b.iter().rposition(|b| *b == b')')?;
+fn parse_stat(pid: u32, bytes: &[u8]) -> Option<Stat> {
+    let start = bytes.iter().position(|bytes| *bytes == b'(')?;
+    let end = bytes.iter().rposition(|bytes| *bytes == b')')?;
     if end <= start {
         return None;
     }
-    let mut f = b[end + 1..]
-        .split(|b| b.is_ascii_whitespace())
-        .filter(|f| !f.is_empty());
+    let mut field_iter = bytes[end + 1..]
+        .split(|bytes| bytes.is_ascii_whitespace())
+        .filter(|fields| !fields.is_empty());
     let mut fields = [&b""[..]; 22];
-    for v in &mut fields {
-        *v = f.next()?
+    for field in &mut fields {
+        *field = field_iter.next()?
     }
-    let n = |i| std::str::from_utf8(fields[i]).ok()?.parse::<u64>().ok();
+    let parse_number = |i| std::str::from_utf8(fields[i]).ok()?.parse::<u64>().ok();
     // SAFETY: sysconf takes a constant selector and no pointers.
     let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
     Some(Stat {
-        id: Identity {
+        identity: Identity {
             pid,
-            started: n(19)?,
+            started: parse_number(19)?,
             started_sub: 0,
         },
-        name: String::from_utf8_lossy(&b[start + 1..end]).into_owned(),
-        parent: n(1)?.try_into().ok()?,
-        ticks: n(11)?.checked_add(n(12)?)?,
-        rss: n(21).and_then(|n| n.checked_mul(page.try_into().ok()?)),
+        name: String::from_utf8_lossy(&bytes[start + 1..end]).into_owned(),
+        parent: parse_number(1)?.try_into().ok()?,
+        ticks: parse_number(11)?.checked_add(parse_number(12)?)?,
+        rss: parse_number(21)
+            .and_then(|parse_number| parse_number.checked_mul(page.try_into().ok()?)),
     })
 }
 fn total_cpu() -> u64 {
     fs::read_to_string("/proc/stat")
         .ok()
         .and_then(|s| {
-            let mut f = s.lines().next()?.split_whitespace();
-            if f.next() != Some("cpu") {
+            let mut fields = s.lines().next()?.split_whitespace();
+            if fields.next() != Some("cpu") {
                 return None;
             }
-            f.take(8)
-                .try_fold(0u64, |sum, n| sum.checked_add(n.parse().ok()?))
+            fields.take(8).try_fold(0u64, |sum, parse_number| {
+                sum.checked_add(parse_number.parse().ok()?)
+            })
         })
         .unwrap_or(0)
 }
@@ -77,8 +80,8 @@ fn deleted_path(base: &Path, mut path: PathBuf) -> (PathBuf, bool) {
     }
     (path, false)
 }
-fn permission(e: &std::io::Error, restricted: &mut bool) {
-    if e.kind() == std::io::ErrorKind::PermissionDenied {
+fn permission(error: &std::io::Error, restricted: &mut bool) {
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
         *restricted = true
     }
 }
@@ -89,7 +92,7 @@ impl Backend for Native {
         let mut foreign = 0;
         let mut users = HashMap::new();
         let own_ns = fs::read_link("/proc/self/ns/mnt").ok();
-        for entry in fs::read_dir("/proc").map_err(|e| io("enumerate processes", e))? {
+        for entry in fs::read_dir("/proc").map_err(|error| io("enumerate processes", error))? {
             cancel.check()?;
             let Ok(entry) = entry else { continue };
             let Some(pid) = entry
@@ -102,8 +105,8 @@ impl Backend for Native {
             if pid == std::process::id() {
                 continue;
             }
-            let st = match stat(pid) {
-                Ok(st) => st,
+            let stats = match stat(pid) {
+                Ok(stats) => stats,
                 Err(Error::Io { source, .. }) => {
                     if source.kind() == std::io::ErrorKind::PermissionDenied {
                         denied += 1
@@ -113,18 +116,18 @@ impl Backend for Native {
                 Err(_) => continue,
             };
             let base = entry.path();
-            if let (Some(a), Ok(b)) = (&own_ns, fs::read_link(base.join("ns/mnt")))
-                && *a != b
+            if let (Some(a), Ok(bytes)) = (&own_ns, fs::read_link(base.join("ns/mnt")))
+                && *a != bytes
             {
                 foreign += 1;
                 continue;
             }
             let mut restricted = false;
-            let mut p = Process {
-                identity: st.id,
-                name: st.name,
-                parent: st.parent,
-                memory: st.rss,
+            let mut process = Process {
+                identity: stats.identity,
+                name: stats.name,
+                parent: stats.parent,
+                memory: stats.rss,
                 ..Process::default()
             };
             for (name, relation, access) in [
@@ -135,21 +138,21 @@ impl Backend for Native {
                 match fs::read_link(&reference) {
                     Ok(path) => {
                         if name == "cwd" {
-                            p.cwd = path.clone()
+                            process.cwd = path.clone()
                         } else {
-                            p.executable = path.clone()
+                            process.executable = path.clone()
                         }
                         let (path, deleted) = deleted_path(&base, path);
                         if target.directory && !target.contains(&path) {
                             continue;
                         }
-                        let meta = if target.directory {
+                        let metadata = if target.directory {
                             None
                         } else {
                             fs::metadata(reference).ok()
                         };
-                        if target.matches(&path, meta.as_ref()) {
-                            p.usages.push(Usage {
+                        if target.matches(&path, metadata.as_ref()) {
+                            process.usages.push(Usage {
                                 path,
                                 relation,
                                 access,
@@ -158,20 +161,20 @@ impl Backend for Native {
                             })
                         }
                     }
-                    Err(e) => permission(&e, &mut restricted),
+                    Err(error) => permission(&error, &mut restricted),
                 }
             }
             match fs::read_dir(base.join("fd")) {
-                Err(e) => permission(&e, &mut restricted),
+                Err(error) => permission(&error, &mut restricted),
                 Ok(fds) => {
-                    for fd in fds {
+                    for descriptor in fds {
                         cancel.check()?;
-                        let Ok(fd) = fd else { continue };
-                        let reference = fd.path();
+                        let Ok(descriptor) = descriptor else { continue };
+                        let reference = descriptor.path();
                         let path = match fs::read_link(&reference) {
-                            Ok(p) => p,
-                            Err(e) => {
-                                permission(&e, &mut restricted);
+                            Ok(process) => process,
+                            Err(error) => {
+                                permission(&error, &mut restricted);
                                 continue;
                             }
                         };
@@ -182,23 +185,24 @@ impl Backend for Native {
                         if target.directory && !target.contains(&path) {
                             continue;
                         }
-                        let meta = if target.directory {
+                        let metadata = if target.directory {
                             None
                         } else {
                             fs::metadata(&reference).ok()
                         };
-                        if !target.matches(&path, meta.as_ref()) {
+                        if !target.matches(&path, metadata.as_ref()) {
                             continue;
                         }
-                        let info =
-                            match fs::read_to_string(base.join("fdinfo").join(fd.file_name())) {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    permission(&e, &mut restricted);
-                                    String::new()
-                                }
-                            };
-                        let access = info
+                        let descriptor_info = match fs::read_to_string(
+                            base.join("fdinfo").join(descriptor.file_name()),
+                        ) {
+                            Ok(s) => s,
+                            Err(error) => {
+                                permission(&error, &mut restricted);
+                                String::new()
+                            }
+                        };
+                        let access = descriptor_info
                             .lines()
                             .find_map(|line| line.strip_prefix("flags:"))
                             .and_then(|s| u32::from_str_radix(s.trim(), 8).ok())
@@ -215,15 +219,15 @@ impl Backend for Native {
                                 }
                             })
                             .unwrap_or_default();
-                        p.usages.push(Usage {
+                        process.usages.push(Usage {
                             path: path.clone(),
                             relation: Relation::Open,
                             access,
                             deleted,
                             lock: None,
                         });
-                        for lock in locks(&info) {
-                            p.usages.push(Usage {
+                        for lock in locks(&descriptor_info) {
+                            process.usages.push(Usage {
                                 path: path.clone(),
                                 relation: Relation::Locked,
                                 access,
@@ -235,7 +239,7 @@ impl Backend for Native {
                 }
             }
             match File::open(base.join("maps")) {
-                Err(e) => permission(&e, &mut restricted),
+                Err(error) => permission(&error, &mut restricted),
                 Ok(file) => {
                     let mut reader = BufReader::with_capacity(8192, file);
                     let mut line = Vec::with_capacity(512);
@@ -245,8 +249,8 @@ impl Backend for Native {
                         match reader.read_until(b'\n', &mut line) {
                             Ok(0) => break,
                             Ok(_) => {}
-                            Err(e) => {
-                                permission(&e, &mut restricted);
+                            Err(error) => {
+                                permission(&error, &mut restricted);
                                 break;
                             }
                         }
@@ -263,7 +267,7 @@ impl Backend for Native {
                             } else if !target.matches(&path, None) {
                                 continue;
                             }
-                            p.usages.push(Usage {
+                            process.usages.push(Usage {
                                 path,
                                 relation: Relation::Mapped,
                                 access,
@@ -277,14 +281,15 @@ impl Backend for Native {
             if restricted {
                 denied += 1
             }
-            if !p.usages.is_empty() && stat(pid).is_ok_and(|s| s.id == p.identity) {
+            if !process.usages.is_empty() && stat(pid).is_ok_and(|s| s.identity == process.identity)
+            {
                 let uid = fs::read_to_string(base.join("status")).ok().and_then(|s| {
                     s.lines()
                         .find_map(|l| l.strip_prefix("Uid:"))
                         .and_then(|s| s.split_whitespace().nth(1))
                         .and_then(|s| s.parse::<u32>().ok())
                 });
-                p.user = uid
+                process.user = uid
                     .map(|uid| {
                         users
                             .entry(uid)
@@ -292,23 +297,23 @@ impl Backend for Native {
                             .clone()
                     })
                     .unwrap_or_else(|| "unknown".into());
-                let mut next = p.parent;
+                let mut next = process.parent;
                 while next > 0
-                    && p.ancestors.len() < 8
+                    && process.ancestors.len() < 8
                     && next != pid
-                    && !p.ancestors.iter().any(|a| a.identity.pid == next)
+                    && !process.ancestors.iter().any(|a| a.identity.pid == next)
                 {
                     cancel.check()?;
                     match stat(next) {
                         Ok(s) => {
-                            p.ancestors.push(Ancestor {
-                                identity: s.id,
+                            process.ancestors.push(Ancestor {
+                                identity: s.identity,
                                 name: s.name,
                             });
                             next = s.parent
                         }
                         Err(_) => {
-                            p.ancestors.push(Ancestor {
+                            process.ancestors.push(Ancestor {
                                 identity: Identity {
                                     pid: next,
                                     ..Identity::default()
@@ -319,7 +324,7 @@ impl Backend for Native {
                         }
                     }
                 }
-                snapshot.processes.push(p);
+                snapshot.processes.push(process);
             }
         }
         if denied > 0 {
@@ -332,7 +337,7 @@ impl Backend for Native {
         let ids = snapshot
             .processes
             .iter()
-            .map(|p| p.identity)
+            .map(|process| process.identity)
             .collect::<Vec<_>>();
         apply_metrics(&mut snapshot, self.sample(&ids, cancel)?);
         Ok(snapshot)
@@ -344,51 +349,52 @@ impl Backend for Native {
     ) -> Result<Vec<(Identity, Metrics)>> {
         let total = total_cpu();
         let mut raw = Vec::with_capacity(ids.len());
-        for &id in ids {
+        for &identity in ids {
             cancel.check()?;
-            if let Ok(st) = stat(id.pid)
-                && st.id == id
+            if let Ok(stats) = stat(identity.pid)
+                && stats.identity == identity
             {
-                raw.push((id, st.ticks, st.rss))
+                raw.push((identity, stats.ticks, stats.rss))
             }
         }
         if total == 0 {
             return Ok(raw
                 .into_iter()
-                .map(|(id, _, memory)| (id, Metrics { memory, cpu: None }))
+                .map(|(identity, _, memory)| (identity, Metrics { memory, cpu: None }))
                 .collect());
         }
         Ok(self.sampler.sample(raw, total))
     }
-    fn terminate(&mut self, id: Identity, force: bool, cancel: &Cancellation) -> Result<()> {
-        id.validate()?;
+    fn terminate(&mut self, identity: Identity, force: bool, cancel: &Cancellation) -> Result<()> {
+        identity.validate()?;
         cancel.check()?;
-        let pid = Pid::from_raw(id.pid.try_into().map_err(|_| Error::Protected)?)
+        let pid = Pid::from_raw(identity.pid.try_into().map_err(|_| Error::Protected)?)
             .ok_or(Error::Protected)?;
-        let fd = pidfd_open(pid, PidfdFlags::empty())
-            .map_err(|e| io("open process safely (requires Linux 5.3+)", e.into()))?;
-        if stat(id.pid)?.id != id {
+        let descriptor = pidfd_open(pid, PidfdFlags::empty())
+            .map_err(|error| io("open process safely (requires Linux 5.3+)", error.into()))?;
+        if stat(identity.pid)?.identity != identity {
             return Err(Error::Changed);
         }
         cancel.check()?;
-        pidfd_send_signal(&fd, if force { Signal::KILL } else { Signal::TERM })
-            .map_err(|e| io("signal process", e.into()))
+        pidfd_send_signal(&descriptor, if force { Signal::KILL } else { Signal::TERM })
+            .map_err(|error| io("signal process", error.into()))
     }
 }
-fn locks(info: &str) -> Vec<String> {
-    info.lines()
+fn locks(descriptor_info: &str) -> Vec<String> {
+    descriptor_info
+        .lines()
         .filter_map(|line| {
-            let f: Vec<_> = line.split_whitespace().collect();
-            if f.len() != 9
-                || f[0] != "lock:"
-                || !matches!(f[2], "FLOCK" | "POSIX" | "OFDLCK")
-                || !matches!(f[4], "READ" | "WRITE")
+            let fields: Vec<_> = line.split_whitespace().collect();
+            if fields.len() != 9
+                || fields[0] != "lock:"
+                || !matches!(fields[2], "FLOCK" | "POSIX" | "OFDLCK")
+                || !matches!(fields[4], "READ" | "WRITE")
             {
                 return None;
             }
             Some(format!(
                 "{} {} {} bytes {}–{}",
-                f[2], f[3], f[4], f[7], f[8]
+                fields[2], fields[3], fields[4], fields[7], fields[8]
             ))
         })
         .collect()
@@ -401,7 +407,7 @@ fn mapping(line: &[u8]) -> Option<(PathBuf, Access, u64, u64)> {
             at += 1
         }
         let start = at;
-        while line.get(at).is_some_and(|b| *b != b' ') {
+        while line.get(at).is_some_and(|bytes| *bytes != b' ') {
             at += 1
         }
         *field = line.get(start..at)?;
@@ -464,8 +470,9 @@ mod tests {
     }
     #[test]
     fn spaces_in_maps() {
-        let (p, _, _, ino) = mapping(b"100-200 rw-p 0000 00:13 12  /a file\\012name\n").unwrap();
-        assert_eq!(p, Path::new("/a file\nname"));
+        let (process, _, _, ino) =
+            mapping(b"100-200 rw-p 0000 00:13 12  /a file\\012name\n").unwrap();
+        assert_eq!(process, Path::new("/a file\nname"));
         assert_eq!(ino, 12);
     }
 }

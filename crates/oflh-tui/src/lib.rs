@@ -27,6 +27,7 @@ impl Drop for TerminalGuard {
         ratatui::restore();
     }
 }
+/// Run the interactive terminal with background scanning and RAII restoration.
 pub fn run(target: Target, version: String, backend: Box<dyn Backend>) -> std::io::Result<()> {
     let mut terminal = ratatui::try_init()?;
     let _guard = TerminalGuard;
@@ -200,21 +201,21 @@ fn open_link(url: &'static str) -> std::io::Result<()> {
     use std::process::{Command, Stdio};
     #[cfg(target_os = "linux")]
     let mut command = {
-        let mut c = Command::new("xdg-open");
-        c.arg(url);
-        c
+        let mut command = Command::new("xdg-open");
+        command.arg(url);
+        command
     };
     #[cfg(target_os = "macos")]
     let mut command = {
-        let mut c = Command::new("open");
-        c.arg(url);
-        c
+        let mut command = Command::new("open");
+        command.arg(url);
+        command
     };
     #[cfg(windows)]
     let mut command = {
-        let mut c = Command::new("rundll32.exe");
+        let mut command = Command::new("rundll32.exe");
         c.args(["url.dll,FileProtocolHandler", url]);
-        c
+        command
     };
     #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
     return Err(std::io::Error::other("unsupported platform"));

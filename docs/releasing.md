@@ -6,35 +6,45 @@ The public release workflow creates **drafts only** for review before publishing
 
 Every push to `main` and every pull request runs the following matrix:
 
-| Runner | Target | Race detector |
-| --- | --- | --- |
-| Ubuntu 24.04 x86-64 | linux/amd64 | Yes |
-| Ubuntu 24.04 ARM64 | linux/arm64 | Yes |
-| macOS 15 Intel | darwin/amd64 | Yes |
-| macOS 15 Apple Silicon | darwin/arm64 | Yes |
-| Windows 2025 x86-64 | windows/amd64 | Yes |
-| Windows 11 ARM64 | windows/arm64 | Unavailable for this target; native tests and builds run |
+| Runner | Target |
+| --- | --- |
+| Ubuntu 24.04 x86-64 | linux/amd64 |
+| Ubuntu 24.04 ARM64 | linux/arm64 |
+| macOS 15 Intel | darwin/amd64 |
+| macOS 15 Apple Silicon | darwin/arm64 |
+| Windows 2025 x86-64 | windows/amd64 |
+| Windows 11 ARM64 | windows/arm64 |
 
-Windows ARM64 is built and tested natively on GitHub's `windows-11-arm` runner.
-Only the [Go race detector](https://go.dev/doc/articles/race_detector) is unavailable
-for this target. Release binaries use `CGO_ENABLED=0`.
+Every target runs formatting, Clippy, unit/native integration tests, and repeated
+real terminal tests. It builds only the release `oflh` executable, checks its CLI,
+and packages it with Rust `xtask`. Release jobs consume those artifacts.
 
-Tests start child processes using an explicit pipe handshake. They cover an open file
-with spaces and Unicode, directory descendants, process metadata, cancellation, stale
-identity rejection, force termination, and attempts to terminate exited or protected
-identities. Unix tests also cover CWD, mapped files and SIGTERM. Linux additionally
-checks deleted-but-open files. Windows verifies that normal termination of a console
-helper returns an honest error instead of silently force-killing it.
+Tests and developer tools are separate executables and dev-dependencies. The
+application needs no Go or Python runtime. Release builds use thin LTO, one
+codegen unit, stripped symbols, and unwinding for RAII terminal cleanup.
 
-Path tests run on the host OS, including Windows drive, separator, case and UNC rules.
-UI tests verify searching, resizing, table navigation and safe confirmation behavior.
-Packaging tests verify the exact six executable targets, payload integrity, checksums,
-and Homebrew formula URLs. Unexpected artifacts are rejected.
+## Prepare a local candidate
 
-The no-cgo tests exercise the same runtime configuration as release binaries. The race
-pass is an additional check. Each job builds, runs `--version` and `--help`, then packages
-its binary. Release jobs consume these tested artifacts; they do not rebuild on Linux
-and assume the result works elsewhere.
+The workspace currently identifies itself as `0.0.10-rc.1`.
+
+```sh
+cargo xtask check
+cargo build --release --locked --bin oflh
+cargo xtask package --version v0.0.10-rc.1 --os linux --arch amd64 --binary target/release/oflh
+```
+
+Use the corresponding OS/architecture and `.exe` suffix on Windows. To assemble
+a complete candidate, download all six artifacts from the same green native CI
+run into `dist`, then run:
+
+```sh
+cargo xtask assemble --version v0.0.10-rc.1 --output dist --formula bin/oflh-rc.rb
+```
+
+The assembler rejects missing, empty, or unexpected artifacts and writes SHA-256
+checksums plus the candidate formula. Create `bin` first. Preparing locally does
+not publish a release or push a tag. Candidate formula URLs become available only
+if that release is subsequently published.
 
 ## Create a draft
 

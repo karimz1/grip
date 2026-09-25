@@ -10,6 +10,7 @@ publish = false
 workspace = true
 
 [dependencies]
+thiserror.workspace = true
 oflh-core.workspace = true
 oflh-platform.workspace = true
 oflh-tui.workspace = true

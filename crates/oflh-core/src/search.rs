@@ -1,24 +1,26 @@
 //! Compiled queries and reusable scratch space. Search indices belong to a snapshot.
 use crate::{Process, Usage};
 #[derive(Debug)]
+/// A searchable field with cached text and word boundaries.
 pub struct Field {
     lower: String,
     chars: Vec<char>,
     boundaries: Vec<bool>,
-    pub name: bool,
+    name: bool,
 }
 impl Field {
+    /// Build a field, optionally giving it filename ranking priority.
     pub fn new(text: &str, name: bool) -> Self {
         let chars: Vec<_> = text.chars().collect();
         let boundaries = (0..chars.len())
             .map(|i| {
-                let c = chars[i];
+                let character = chars[i];
                 i == 0
                     || !chars[i - 1].is_alphanumeric()
-                    || c.is_uppercase()
+                    || character.is_uppercase()
                         && (chars[i - 1].is_lowercase()
                             || chars.get(i + 1).is_some_and(|c| c.is_lowercase()))
-                    || !c.is_alphanumeric()
+                    || !character.is_alphanumeric()
             })
             .collect();
         Self {
@@ -30,75 +32,68 @@ impl Field {
     }
 }
 #[derive(Default)]
+/// Reusable matching buffers shared across fields and queries.
 pub struct Scratch {
     previous: Vec<bool>,
     next: Vec<bool>,
 }
 #[derive(Clone, Debug)]
-pub struct Term {
+struct Term {
     text: String,
     chunks: Vec<Vec<char>>,
 }
 #[derive(Clone, Debug, Default)]
+/// A compiled, whitespace-separated search query.
 pub struct Query {
-    pub terms: Vec<Term>,
+    terms: Vec<Term>,
 }
 impl Query {
+    /// Compile substring, wildcard, and word-boundary search terms.
     pub fn new(text: &str) -> Self {
         Self {
             terms: text
                 .split_whitespace()
-                .map(|s| {
-                    let text = s.to_lowercase();
-                    let chunks = text.split('*').map(|s| s.chars().collect()).collect();
+                .map(|scratch| {
+                    let text = scratch.to_lowercase();
+                    let chunks = text
+                        .split('*')
+                        .map(|scratch| scratch.chars().collect())
+                        .collect();
                     Term { text, chunks }
                 })
                 .collect(),
         }
     }
+    /// Whether the query contains no terms.
     pub fn is_empty(&self) -> bool {
         self.terms.is_empty()
     }
+    /// Check that every query term matches at least one field.
     pub fn matches(&self, fields: &[Field], scratch: &mut Scratch) -> bool {
         self.terms
             .iter()
-            .all(|t| fields.iter().any(|f| t.matches(f, scratch)))
+            .all(|t| fields.iter().any(|field| t.matches(field, scratch)))
     }
+    /// Rank matching fields, preferring exact names and prefixes.
     pub fn score(&self, fields: &[Field], scratch: &mut Scratch) -> u32 {
         self.terms
             .iter()
-            .map(|t| {
-                fields
-                    .iter()
-                    .map(|f| {
-                        let s = if f.lower == t.text {
-                            100
-                        } else if f.lower.starts_with(&t.text) {
-                            80
-                        } else if f.lower.contains(&t.text) {
-                            60
-                        } else if t.matches(f, scratch) {
-                            30
-                        } else {
-                            0
-                        };
-                        s * if f.name { 2 } else { 1 }
-                    })
-                    .max()
-                    .unwrap_or(0)
-            })
+            .map(|term| term.best_score(fields.iter(), scratch))
             .sum()
     }
+
+    /// Keep terms not already satisfied by process metadata.
     pub fn file_terms(&self, metadata: &[Field], scratch: &mut Scratch) -> Self {
         Self {
             terms: self
                 .terms
                 .iter()
-                .filter(|t| !metadata.iter().any(|f| t.matches(f, scratch)))
+                .filter(|t| !metadata.iter().any(|field| t.matches(field, scratch)))
                 .cloned()
                 .collect(),
         }
     }
+    /// Return the normalized query text.
     pub fn text(&self) -> String {
         self.terms
             .iter()
@@ -108,13 +103,39 @@ impl Query {
     }
 }
 impl Term {
-    fn matches(&self, f: &Field, s: &mut Scratch) -> bool {
-        if self.chunks.len() == 1 && f.lower.contains(&self.text) {
+    fn best_score<'a>(
+        &self,
+        fields: impl Iterator<Item = &'a Field>,
+        scratch: &mut Scratch,
+    ) -> u32 {
+        fields
+            .map(|field| self.score(field, scratch))
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn score(&self, field: &Field, scratch: &mut Scratch) -> u32 {
+        let score = if field.lower == self.text {
+            100
+        } else if field.lower.starts_with(&self.text) {
+            80
+        } else if field.lower.contains(&self.text) {
+            60
+        } else if self.matches(field, scratch) {
+            30
+        } else {
+            0
+        };
+        score * if field.name { 2 } else { 1 }
+    }
+
+    fn matches(&self, field: &Field, scratch: &mut Scratch) -> bool {
+        if self.chunks.len() == 1 && field.lower.contains(&self.text) {
             return true;
         }
         let mut start = 0;
         for chunk in &self.chunks {
-            match match_end(chunk, f, start, s) {
+            match match_end(chunk, field, start, scratch) {
                 Some(end) => start = end,
                 None => return false,
             }
@@ -125,100 +146,107 @@ impl Term {
 fn lower(c: char) -> char {
     c.to_lowercase().next().unwrap_or(c)
 }
-fn match_end(q: &[char], f: &Field, start: usize, s: &mut Scratch) -> Option<usize> {
-    if q.is_empty() {
+fn match_end(query: &[char], field: &Field, start: usize, scratch: &mut Scratch) -> Option<usize> {
+    if query.is_empty() {
         return Some(start);
     }
-    let chars = &f.chars;
+    let chars = &field.chars;
     let mut best = chars.len() + 1;
-    if q.len() <= chars.len().saturating_sub(start) {
-        for i in start..=chars.len() - q.len() {
-            if q.iter().enumerate().all(|(j, c)| lower(chars[i + j]) == *c) {
-                best = i + q.len();
+    if query.len() <= chars.len().saturating_sub(start) {
+        for i in start..=chars.len() - query.len() {
+            if query
+                .iter()
+                .enumerate()
+                .all(|(j, c)| lower(chars[i + j]) == *c)
+            {
+                best = i + query.len();
                 break;
             }
         }
     }
-    s.previous.resize(chars.len(), false);
-    s.previous.fill(false);
-    s.next.resize(chars.len(), false);
-    for (qi, qc) in q.iter().enumerate() {
-        s.next.fill(false);
+    scratch.previous.resize(chars.len(), false);
+    scratch.previous.fill(false);
+    scratch.next.resize(chars.len(), false);
+    for (query_index, query_character) in query.iter().enumerate() {
+        scratch.next.fill(false);
         let mut earlier = false;
         for (j, &c) in chars.iter().enumerate().take(best).skip(start) {
             if c == '/' || c == '\\' {
                 earlier = false;
                 continue;
             }
-            if lower(c) == *qc {
-                s.next[j] = if qi == 0 {
-                    f.boundaries[j]
+            if lower(c) == *query_character {
+                scratch.next[j] = if query_index == 0 {
+                    field.boundaries[j]
                 } else {
-                    j > start && s.previous[j - 1] || f.boundaries[j] && earlier
+                    j > start && scratch.previous[j - 1] || field.boundaries[j] && earlier
                 };
             }
-            earlier |= s.previous[j];
+            earlier |= scratch.previous[j];
         }
-        std::mem::swap(&mut s.previous, &mut s.next);
+        std::mem::swap(&mut scratch.previous, &mut scratch.next);
     }
     for j in start..chars.len().min(best) {
-        if s.previous[j] {
+        if scratch.previous[j] {
             return Some(j + 1);
         }
     }
     (best <= chars.len()).then_some(best)
 }
+/// Search fields cached for one process snapshot.
 pub struct ProcessIndex {
+    /// Process identity and descriptive fields.
     pub metadata: Vec<Field>,
+    /// Fields for each observed file usage.
     pub usages: Vec<Vec<Field>>,
 }
 impl ProcessIndex {
-    pub fn new(p: &Process) -> Self {
+    /// Cache searchable fields for a process and its file usages.
+    pub fn new(process: &Process) -> Self {
         Self {
             metadata: vec![
-                Field::new(&p.identity.pid.to_string(), false),
-                Field::new(&p.name, true),
-                Field::new(&p.user, false),
-                Field::new(&p.executable.to_string_lossy(), false),
-                Field::new(&p.cwd.to_string_lossy(), false),
+                Field::new(&process.identity.pid.to_string(), false),
+                Field::new(&process.name, true),
+                Field::new(&process.user, false),
+                Field::new(&process.executable.to_string_lossy(), false),
+                Field::new(&process.cwd.to_string_lossy(), false),
             ],
-            usages: p.usages.iter().map(usage_fields).collect(),
+            usages: process.usages.iter().map(usage_fields).collect(),
         }
     }
-    pub fn matches(&self, q: &Query, s: &mut Scratch) -> bool {
-        q.terms.iter().all(|t| {
+    /// Check the query against process metadata and all usages.
+    pub fn matches(&self, query: &Query, scratch: &mut Scratch) -> bool {
+        query.terms.iter().all(|t| {
             self.metadata
                 .iter()
                 .chain(self.usages.iter().flatten())
-                .any(|f| t.matches(f, s))
+                .any(|field| t.matches(field, scratch))
         })
     }
-    pub fn score(&self, q: &Query, s: &mut Scratch) -> u32 {
-        q.terms
+    /// Rank this process against a compiled query.
+    pub fn score(&self, query: &Query, scratch: &mut Scratch) -> u32 {
+        query
+            .terms
             .iter()
-            .map(|t| {
-                let q = Query {
-                    terms: vec![t.clone()],
-                };
-                std::iter::once(&self.metadata)
-                    .chain(self.usages.iter())
-                    .map(|f| q.score(f, s))
-                    .max()
-                    .unwrap_or(0)
+            .map(|term| {
+                term.best_score(
+                    self.metadata.iter().chain(self.usages.iter().flatten()),
+                    scratch,
+                )
             })
             .sum()
     }
 }
-fn usage_fields(u: &Usage) -> Vec<Field> {
-    let path = u.path.to_string_lossy();
+fn usage_fields(usage: &Usage) -> Vec<Field> {
+    let path = usage.path.to_string_lossy();
     let name = path.rsplit(['/', '\\']).next().unwrap_or(&path);
     let mut fields = vec![
         Field::new(&path, false),
         Field::new(name, true),
-        Field::new(u.relation.label(), false),
-        Field::new(u.access.label(), false),
+        Field::new(usage.relation.label(), false),
+        Field::new(usage.access.label(), false),
     ];
-    if let Some(lock) = &u.lock {
+    if let Some(lock) = &usage.lock {
         fields.push(Field::new(&lock.to_string(), false))
     }
     fields
@@ -228,7 +256,7 @@ mod tests {
     use super::*;
     #[test]
     fn semantics() {
-        for (field, q, want) in [
+        for (field, query, want) in [
             ("Microsoft.IdentityModel.JsonWebTokens.dll", "MIMJWT", true),
             ("FileLockExampleCli.deps.json", "FLEC*.json", true),
             ("FileLockExampleCli.dll", "FLEC.", true),
@@ -242,9 +270,9 @@ mod tests {
             ("Micro.Core.dll", "MiCoDll", true),
         ] {
             assert_eq!(
-                Query::new(q).matches(&[Field::new(field, false)], &mut Scratch::default()),
+                Query::new(query).matches(&[Field::new(field, false)], &mut Scratch::default()),
                 want,
-                "{q} in {field}"
+                "{query} in {field}"
             );
         }
     }

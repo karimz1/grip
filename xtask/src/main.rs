@@ -16,14 +16,14 @@ const TARGETS: [(&str, &str); 6] = [
     ("windows", "amd64"),
     ("windows", "arm64"),
 ];
-fn version(s: &str) -> Result<()> {
-    if s == "dev" {
+fn version(value: &str) -> Result<()> {
+    if value == "dev" {
         return Ok(());
     }
-    let Some(v) = s.strip_prefix('v') else {
+    let Some(version_text) = value.strip_prefix('v') else {
         return Err("version must be dev or v-prefixed semantic version".into());
     };
-    semver::Version::parse(v)?;
+    semver::Version::parse(version_text)?;
     Ok(())
 }
 fn name(os: &str, arch: &str) -> Result<String> {
@@ -113,11 +113,11 @@ fn assemble(output: &Path, tag: &str, base: Option<&str>) -> Result<String> {
     }
     let mut sums = BTreeMap::new();
     for name in expected {
-        let p = output.join(&name);
-        if !p.is_file() || p.metadata()?.len() == 0 {
+        let artifact_path = output.join(&name);
+        if !artifact_path.is_file() || artifact_path.metadata()?.len() == 0 {
             return Err(format!("missing tested artifact: {name}").into());
         }
-        sums.insert(name, digest(&p)?);
+        sums.insert(name, digest(&artifact_path)?);
     }
     let formula = formula(tag, &sums, base)?;
     let mut checksum = File::create(output.join("checksums.txt"))?;
@@ -126,11 +126,42 @@ fn assemble(output: &Path, tag: &str, base: Option<&str>) -> Result<String> {
     }
     Ok(formula)
 }
+/// Run the repository's formatting, lint, and behavior gates.
+fn check() -> Result<()> {
+    for arguments in [
+        &["fmt", "--all", "--check"][..],
+        &[
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
+        ][..],
+        &["test", "--workspace", "--locked"][..],
+    ] {
+        let status = std::process::Command::new("cargo")
+            .args(arguments)
+            .status()?;
+        if !status.success() {
+            return Err(format!("cargo {} failed: {status}", arguments.join(" ")).into());
+        }
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let action = args
         .next()
-        .ok_or("usage: cargo xtask validate|package|assemble --version TAG [options]")?;
+        .ok_or("usage: cargo xtask check|validate|package|assemble --version TAG [options]")?;
+    if action == "check" {
+        if args.next().is_some() {
+            return Err("check takes no options".into());
+        }
+        return check();
+    }
     let mut options = BTreeMap::new();
     while let Some(key) = args.next() {
         if ![
@@ -172,11 +203,12 @@ fn run() -> Result<()> {
             )?;
         }
         "assemble" => {
-            let f = assemble(output, tag, options.get("--base-url").map(String::as_str))?;
+            let formula_text =
+                assemble(output, tag, options.get("--base-url").map(String::as_str))?;
             if let Some(path) = options.get("--formula") {
-                fs::write(path, f)?
+                fs::write(path, formula_text)?
             } else {
-                print!("{f}")
+                print!("{formula_text}")
             }
         }
         _ => return Err("unknown action".into()),
@@ -186,8 +218,8 @@ fn run() -> Result<()> {
 fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("release: {e}");
+        Err(error) => {
+            eprintln!("release: {error}");
             std::process::ExitCode::FAILURE
         }
     }
@@ -197,11 +229,11 @@ mod tests {
     use super::*;
     #[test]
     fn versions() {
-        for v in ["dev", "v0.0.10-rc.1", "v1.2.3"] {
-            assert!(version(v).is_ok())
+        for version_text in ["dev", "v0.0.10-rc.1", "v1.2.3"] {
+            assert!(version(version_text).is_ok())
         }
-        for v in ["1.2.3", "v1.2", "v1.2.3-", "v01.2.3", "v1.2.3\n"] {
-            assert!(version(v).is_err())
+        for version_text in ["1.2.3", "v1.2", "v1.2.3-", "v01.2.3", "v1.2.3\n"] {
+            assert!(version(version_text).is_err())
         }
     }
     #[test]
@@ -213,12 +245,12 @@ mod tests {
         fs::write(&source, b"test payload").unwrap();
         let output = root.join("dist");
         for (os, arch) in TARGETS {
-            let p = package(&source, &output, "v0.0.10-rc.1", os, arch).unwrap();
-            assert_eq!(fs::read(p).unwrap(), b"test payload")
+            let artifact_path = package(&source, &output, "v0.0.10-rc.1", os, arch).unwrap();
+            assert_eq!(fs::read(artifact_path).unwrap(), b"test payload")
         }
-        let f = assemble(&output, "v0.0.10-rc.1", None).unwrap();
-        assert_eq!(f.matches("sha256").count(), 4);
-        assert!(f.contains("releases/download/v0.0.10-rc.1/oflh-darwin-arm64"));
+        let formula_text = assemble(&output, "v0.0.10-rc.1", None).unwrap();
+        assert_eq!(formula_text.matches("sha256").count(), 4);
+        assert!(formula_text.contains("releases/download/v0.0.10-rc.1/oflh-darwin-arm64"));
         assert_eq!(
             fs::read_to_string(output.join("checksums.txt"))
                 .unwrap()
