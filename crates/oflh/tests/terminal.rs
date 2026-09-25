@@ -34,18 +34,38 @@ fn native_terminal_workflow() {
     }
     let _guard = Guard(child.clone_killer());
     let mut reader = pair.master.try_clone_reader().unwrap();
-    let mut writer = pair.master.take_writer().unwrap();
+    let writer = Arc::new(Mutex::new(pair.master.take_writer().unwrap()));
+    let response_writer = writer.clone();
     let parser = Arc::new(Mutex::new(vt100::Parser::new(30, 120, 0)));
     let output = parser.clone();
     std::thread::spawn(move || {
         let mut buf = [0; 8192];
+        let mut terminal_requests = Vec::new();
         while let Ok(n) = reader.read(&mut buf) {
             if n == 0 {
                 break;
             }
             output.lock().unwrap().process(&buf[..n]);
+            terminal_requests.extend_from_slice(&buf[..n]);
+            // ConPTY's INHERIT_CURSOR handshake requires the terminal host to answer DSR.
+            if terminal_requests
+                .windows(4)
+                .any(|request| request == b"\x1b[6n")
+            {
+                let mut writer = response_writer.lock().unwrap();
+                writer.write_all(b"\x1b[1;1R").unwrap();
+                writer.flush().unwrap();
+                terminal_requests.clear();
+            } else if terminal_requests.len() > 16 {
+                terminal_requests.drain(..terminal_requests.len() - 16);
+            }
         }
     });
+    let send = |input: &[u8]| {
+        let mut writer = writer.lock().unwrap();
+        writer.write_all(input).unwrap();
+        writer.flush().unwrap();
+    };
     let wait = |needle: &str| {
         let start = Instant::now();
         loop {
@@ -61,20 +81,15 @@ fn native_terminal_workflow() {
     };
     wait("Processes");
     wait("terminal-fixture");
-    writer.write_all(b"/terminal-fixture\r").unwrap();
-    writer.flush().unwrap();
+    send(b"/terminal-fixture\r");
     wait("1 of");
-    writer.write_all(b"\r").unwrap();
-    writer.flush().unwrap();
+    send(b"\r");
     wait("process details");
-    writer.write_all(b"l").unwrap();
-    writer.flush().unwrap();
+    send(b"l");
     wait("LOCKS ONLY");
-    writer.write_all(b"l").unwrap();
-    writer.flush().unwrap();
+    send(b"l");
     wait("ALL USAGES");
-    writer.write_all(b"r").unwrap();
-    writer.flush().unwrap();
+    send(b"r");
     std::thread::sleep(Duration::from_millis(100));
     pair.master
         .resize(PtySize {
@@ -85,14 +100,11 @@ fn native_terminal_workflow() {
         })
         .unwrap();
     parser.lock().unwrap().screen_mut().set_size(24, 80);
-    writer.write_all(b"q?").unwrap();
-    writer.flush().unwrap();
+    send(b"q?");
     wait("SCAN DETAILS");
-    writer.write_all(b"q").unwrap();
-    writer.flush().unwrap();
+    send(b"q");
     wait("Processes");
-    writer.write_all(b"q").unwrap();
-    writer.flush().unwrap();
+    send(b"q");
     let start = Instant::now();
     loop {
         if let Some(status) = child.try_wait().unwrap() {

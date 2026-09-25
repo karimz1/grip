@@ -7,6 +7,7 @@ fn escaping() {
 fn paths() {
     let root = std::env::temp_dir().join(format!("oflh-core-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
+    let root = std::fs::canonicalize(root).unwrap();
     let p = root.join("file ü");
     std::fs::write(&p, b"data").unwrap();
     let target = Target::new(&p).unwrap();

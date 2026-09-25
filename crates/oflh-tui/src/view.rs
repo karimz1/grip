@@ -121,10 +121,7 @@ fn search(frame: &mut Frame, area: Rect, app: &App, detail: bool) {
         ));
     }
 }
-fn footer(frame: &mut Frame, area: Rect, app: &App) {
-    if area.height == 0 {
-        return;
-    }
+fn footer_lines(width: u16, app: &App) -> Vec<Line<'static>> {
     let (keys, status) = match app.screen {
         Screen::Confirm => (
             if app.confirm {
@@ -148,6 +145,17 @@ fn footer(frame: &mut Frame, area: Rect, app: &App) {
             "Enter inspect · Space select · m RAM / c CPU / n name / p PID",
         ),
     };
+    let keys = if width < 60 {
+        match app.screen {
+            Screen::Main if app.tree.is_none() => {
+                "1/2 tabs · / search · Enter inspect · k stop · x force · ? help · q quit"
+            }
+            Screen::Details => "↑↓ select · / search · l locks · r refresh · Esc back",
+            _ => keys,
+        }
+    } else {
+        keys
+    };
     let mut lines = Vec::new();
     if !app.status.is_empty() {
         lines.push(Line::styled(
@@ -164,7 +172,7 @@ fn footer(frame: &mut Frame, area: Rect, app: &App) {
         ))
     }
     lines.push(Line::styled(
-        "─".repeat(area.width as usize),
+        "─".repeat(width as usize),
         Style::default().fg(MUTED),
     ));
     // Wrap whole shortcut phrases to retain meaning at narrow widths.
@@ -172,7 +180,7 @@ fn footer(frame: &mut Frame, area: Rect, app: &App) {
     for hint in keys.split(" · ") {
         let sep = if row.is_empty() { "" } else { " · " };
         if unicode_width::UnicodeWidthStr::width(format!("{row}{sep}{hint}").as_str())
-            > area.width as usize
+            > width as usize
             && !row.is_empty()
         {
             lines.push(Line::styled(std::mem::take(&mut row), accent()))
@@ -191,8 +199,12 @@ fn footer(frame: &mut Frame, area: Rect, app: &App) {
             accent(),
         )]
     }
-    frame.render_widget(Paragraph::new(lines), area);
+    lines
 }
+fn footer(frame: &mut Frame, area: Rect, app: &App) {
+    frame.render_widget(Paragraph::new(footer_lines(area.width, app)), area);
+}
+
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let full = frame.area();
     app.width = full.width;
@@ -315,7 +327,15 @@ fn main_view(frame: &mut Frame, area: Rect, app: &mut App) {
         false,
     );
     let summary = if app.locked {
-        format!("{} locked file observations", app.rows.len())
+        format!(
+            "{} locked files · {} lock entries",
+            app.rows
+                .iter()
+                .map(|r| &app.snapshot.processes[r.process].usages[r.usages[0]].path)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            app.rows.len()
+        )
     } else {
         format!(
             "{} of {} processes",
@@ -348,7 +368,7 @@ fn main_view(frame: &mut Frame, area: Rect, app: &mut App) {
         ),
         accent(),
     );
-    let footer_h = if area.width < 75 { 5 } else { 4 };
+    let footer_h = (footer_lines(area.width, app).len() as u16).min(area.height.saturating_sub(9));
     let body_h = area.height.saturating_sub(7 + footer_h);
     let body = Rect::new(area.x, area.y + 7, area.width, body_h);
     app.page = body_h.saturating_sub(1).max(1) as usize;
@@ -387,6 +407,9 @@ fn main_view(frame: &mut Frame, area: Rect, app: &mut App) {
     );
 }
 fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
+    if app.locked {
+        return locked_table(frame, area, app);
+    }
     if app.rows.is_empty() {
         text(
             frame,
@@ -661,13 +684,31 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         )),
         Line::raw(format!("CPU {} machine · RAM {} RSS", cpu(p), memory(p))),
     ];
-    frame.render_widget(
-        Paragraph::new(header),
-        Rect::new(area.x, area.y + 1, area.width, 5),
-    );
+    let compact = area.height < 24;
+    let head_height = if compact { 3 } else { 6 };
+    if compact {
+        let lines = vec![
+            header[0].clone(),
+            Line::raw(format!(
+                "CPU {} · RAM {} · PARENT {}",
+                cpu(p),
+                memory(p),
+                p.parent
+            )),
+        ];
+        frame.render_widget(
+            Paragraph::new(lines),
+            Rect::new(area.x, area.y + 1, area.width, 2),
+        );
+    } else {
+        frame.render_widget(
+            Paragraph::new(header),
+            Rect::new(area.x, area.y + 1, area.width, 5),
+        );
+    }
     search(
         frame,
-        Rect::new(area.x, area.y + 6, area.width, 3),
+        Rect::new(area.x, area.y + head_height, area.width, 3),
         app,
         true,
     );
@@ -679,7 +720,7 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         .len();
     text(
         frame,
-        line_area(area, 9),
+        line_area(area, head_height + 3),
         format!(
             "{} · {} of {} usages · {locked} locked files   {} / {}",
             if app.detail_locks {
@@ -704,7 +745,7 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         .and_then(|&i| p.usages.get(i));
     text(
         frame,
-        line_area(area, 10),
+        line_area(area, head_height + 4),
         format!(
             "FILE {}",
             current.map_or_else(String::new, |u| safe(
@@ -713,9 +754,9 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         ),
         Style::default().fg(MUTED),
     );
-    let foot_h = if area.width < 90 { 4 } else { 3 };
-    let body_h = area.height.saturating_sub(14 + foot_h);
-    let body = Rect::new(area.x, area.y + 11, area.width, body_h);
+    let foot_h = (footer_lines(area.width, app).len() as u16).min(area.height.saturating_sub(9));
+    let body_h = area.height.saturating_sub(head_height + 8 + foot_h);
+    let body = Rect::new(area.x, area.y + head_height + 5, area.width, body_h);
     if app.usage_rows.is_empty() {
         text(
             frame,
@@ -927,3 +968,62 @@ CPU is a share of total machine capacity, sampled twice.
 Permissions, namespaces and races may limit visibility.
 Source: https://github.com/karimz1/open-file-lock-handle
 Support: https://buymeacoffee.com/karimz1";
+
+fn locked_table(frame: &mut Frame, area: Rect, app: &App) {
+    if app.rows.is_empty() {
+        text(
+            frame,
+            area,
+            if app.scanning {
+                "Scanning for file locks…"
+            } else if !app.query.is_empty() {
+                "No locked files match your filter."
+            } else {
+                "No confirmed locks found in this scan.\nVisibility depends on permissions; press r to refresh."
+            },
+            Style::default().fg(MUTED),
+        );
+        return;
+    }
+    let count = area.height.saturating_sub(1).max(1) as usize;
+    let start = app
+        .cursor
+        .saturating_sub(count - 1)
+        .min(app.rows.len().saturating_sub(count));
+    let show_name = area.width >= 40;
+    let mut widths = vec![Constraint::Length(3), Constraint::Length(8)];
+    let mut headers = vec!["", "PID"];
+    if show_name {
+        widths.push(Constraint::Length(if area.width < 62 { 10 } else { 18 }));
+        headers.push("PROCESS");
+    }
+    widths.push(Constraint::Min(4));
+    headers.push("LOCKED FILE");
+    let rows = app.rows.iter().skip(start).take(count).map(|r| {
+        let p = &app.snapshot.processes[r.process];
+        let u = &p.usages[r.usages[0]];
+        let mut cells = vec![
+            Cell::from(if app.selected.contains(&p.identity) {
+                "●"
+            } else {
+                " "
+            }),
+            Cell::from(p.identity.pid.to_string()),
+        ];
+        if show_name {
+            cells.push(Cell::from(safe(&p.name)))
+        }
+        cells.push(Cell::from(format!(
+            "{}{}",
+            safe(&u.path.to_string_lossy()),
+            if u.deleted { " (deleted)" } else { "" }
+        )));
+        TableRow::new(cells)
+    });
+    let table = Table::new(rows, widths)
+        .column_spacing(0)
+        .header(TableRow::new(headers).style(Style::default().fg(MUTED)))
+        .row_highlight_style(selected());
+    let mut state = TableState::default().with_selected(Some(app.cursor - start));
+    frame.render_stateful_widget(table, area, &mut state);
+}
