@@ -166,7 +166,7 @@ fn native_feature_contract() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("file ü with spaces.bin");
     fs::write(&path, vec![7; 4096]).unwrap();
-    let child = start(&path, "write");
+    let mut child = start(&path, "write");
     let mut backend = native().unwrap();
     let p = process(&mut *backend, &path, child.0.id());
     assert!(p.usages.iter().any(|u| u.lock.is_some()), "{:?}", p.usages);
@@ -200,6 +200,16 @@ fn native_feature_contract() {
     backend
         .terminate(p.identity, true, &Cancellation::default())
         .unwrap();
+    // Termination requests are asynchronous on Windows. Observe process exit before
+    // expecting its restrictive file-sharing handles to have been released.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while child.0.try_wait().unwrap().is_none() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "helper did not exit after termination"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
     assert_eq!(fs::read(&path).unwrap(), vec![7; 4096]);
 }
 #[test]
