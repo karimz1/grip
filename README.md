@@ -21,6 +21,8 @@ interface, then request process termination when needed.
   <img src="images/demo.gif" alt="Open File Lock Handle terminal UI: searchable processes, open files, access modes, and ancestry" width="100%">
 </a>
 
+For a higher-quality preview, watch the [terminal recording on asciinema](https://asciinema.org/a/HVwfkoVJfOi5ckDa).
+
 UI preview with sample processes and paths.
 
 Use it to investigate **“file in use by another process”**, a build that cannot
