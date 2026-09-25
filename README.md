@@ -16,6 +16,12 @@ processes are using a file or directory on Windows, Linux, and macOS.** Inspect
 open file handles, mapped files, DLLs, and available lock evidence in one searchable
 interface, then request process termination when needed.
 
+<a href="images/demo.gif">
+  <img src="images/demo.gif" alt="Open File Lock Handle terminal UI: searchable processes, open files, access modes, and ancestry" width="100%">
+</a>
+
+[Watch the terminal recording](https://asciinema.org/a/mWdEJtgrWFVyN2IS).
+
 Use it to investigate **“file in use by another process”**, a build that cannot
 replace a DLL, or a directory held open by a background application.
 
@@ -97,15 +103,6 @@ abbreviations, and wildcards for quickly narrowing file names.
 | `micro*dll` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
 | `FLEC*` | `FileLockExampleCli.dll`, `FileLockExampleCli.deps.json` |
 | `FLEC*.json` | `FileLockExampleCli.deps.json` |
-
-## Preview
-
-<a href="images/demo.gif">
-  <img src="images/demo.gif" alt="Open File Lock Handle terminal UI: searchable processes, open files, access modes, and ancestry" width="100%">
-</a>
-
-The recording shows the earlier Go interface; the Rust UI preserves its workflow
-and purple theme, with colored confirmation buttons. [Watch the terminal recording](https://asciinema.org/a/mWdEJtgrWFVyN2IS).
 
 ## Installation
 
