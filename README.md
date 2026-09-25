@@ -41,69 +41,6 @@ oflh .                   # Inspect the current directory
 > Homebrew and GitHub Releases provide the latest published version. Build this
 > branch from source to try the Rust implementation now.
 
-## Rust performance — v0.1.0
-
-The Rust redesign targets v0.1.0 and replaces the Go application and release tools
-with a Cargo workspace. The UI uses Ratatui; scanners call native OS interfaces.
-Background scans keep input responsive, resource sampling avoids a second file
-scan, and compiled search fields reuse matching buffers. Tests and developer tools
-are excluded from the distributed executable.
-
-Measured against the preceding Go implementation on the **same Linux x86-64
-workstation and fixture**:
-
-| Operation | Go | Rust candidate |
-| --- | ---: | ---: |
-| First terminal frame, median | 42.5 ms | **1.7 ms** |
-| Directory scan, median | 218.8 ms | **100.6 ms** |
-| Directory scan, p95 | 227.8 ms | **114.7 ms** |
-| Single-file scan, median | 218.4 ms | **96.8 ms** |
-| Missing-file scan, median | 208.9 ms | **108.0 ms** |
-| TUI memory after startup, median | 16,840 KiB | **4,436 KiB** |
-| Stripped executable size | 4.32 MiB | **1.04 MiB** |
-
-Thirty warm scans per target and five startup runs; 512 open handles, 64 mappings,
-and 16 locks. Both scanners produced identical observation rows for this fixture.
-These are measurements of the Rust candidate, **not a published v0.1.0 benchmark**
-or a speed guarantee for every machine. Windows and macOS performance has not
-been measured here. See the [methodology, raw results, and limitations](docs/rust-validation.md).
-
-## Why oflh?
-
-A build cannot replace a DLL. A file reports "in use by another process." A
-background application still references a directory you want to clean up.
-The useful starting point is often a path, rather than a process name or PID.
-
-`oflh` follows that workflow: choose the file or directory, find its users,
-inspect the evidence, and decide whether to stop a process or its parent. It
-brings file-handle inspection and process control into one keyboard-driven
-interface, with searchable results and a separate view for locked files.
-
-It is useful alongside tools such as `lsof`, `fuser`, and Task Manager. It does
-not bypass operating-system permissions or guarantee that every file lock is
-visible. See [Platform behavior](#platform-behavior) for the detection scope.
-
-### What makes it different
-
-`oflh` is path-first. Run `oflh .` on a folder and get a searchable view of visible
-processes using it, including process ancestry and the files each process has open,
-mapped, or locked.
-
-From the same TUI you can inspect detailed file usage, switch to a dedicated
-locked-files view, sort and filter results, and terminate the process or one of
-its parents when needed.
-
-Search is inspired by JetBrains-style navigation, with fragments, CamelCase
-abbreviations, and wildcards for quickly narrowing file names.
-
-| Search | Example match |
-| --- | --- |
-| `dll` | `plugin.dll` |
-| `MIMJWT` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
-| `micro*dll` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
-| `FLEC*` | `FileLockExampleCli.dll`, `FileLockExampleCli.deps.json` |
-| `FLEC*.json` | `FileLockExampleCli.deps.json` |
-
 ## Installation
 
 ### Homebrew
@@ -190,6 +127,69 @@ support, with enough width for the process table and side panel. I recommend
 [Ghostty](https://ghostty.org/docs) on macOS and Linux. This is a personal
 recommendation; I am not affiliated with the project. Ghostty is optional, and
 `oflh` does not depend on a particular terminal emulator.
+
+## Rust performance — v0.1.0
+
+The Rust redesign targets v0.1.0 and replaces the Go application and release tools
+with a Cargo workspace. The UI uses Ratatui; scanners call native OS interfaces.
+Background scans keep input responsive, resource sampling avoids a second file
+scan, and compiled search fields reuse matching buffers. Tests and developer tools
+are excluded from the distributed executable.
+
+Measured against the preceding Go implementation on the **same Linux x86-64
+workstation and fixture**:
+
+| Operation | Go | Rust candidate |
+| --- | ---: | ---: |
+| First terminal frame, median | 42.5 ms | **1.7 ms** |
+| Directory scan, median | 218.8 ms | **100.6 ms** |
+| Directory scan, p95 | 227.8 ms | **114.7 ms** |
+| Single-file scan, median | 218.4 ms | **96.8 ms** |
+| Missing-file scan, median | 208.9 ms | **108.0 ms** |
+| TUI memory after startup, median | 16,840 KiB | **4,436 KiB** |
+| Stripped executable size | 4.32 MiB | **1.04 MiB** |
+
+Thirty warm scans per target and five startup runs; 512 open handles, 64 mappings,
+and 16 locks. Both scanners produced identical observation rows for this fixture.
+These are measurements of the Rust candidate, **not a published v0.1.0 benchmark**
+or a speed guarantee for every machine. Windows and macOS performance has not
+been measured here. See the [methodology, raw results, and limitations](docs/rust-validation.md).
+
+## Why oflh?
+
+A build cannot replace a DLL. A file reports "in use by another process." A
+background application still references a directory you want to clean up.
+The useful starting point is often a path, rather than a process name or PID.
+
+`oflh` follows that workflow: choose the file or directory, find its users,
+inspect the evidence, and decide whether to stop a process or its parent. It
+brings file-handle inspection and process control into one keyboard-driven
+interface, with searchable results and a separate view for locked files.
+
+It is useful alongside tools such as `lsof`, `fuser`, and Task Manager. It does
+not bypass operating-system permissions or guarantee that every file lock is
+visible. See [Platform behavior](#platform-behavior) for the detection scope.
+
+### What makes it different
+
+`oflh` is path-first. Run `oflh .` on a folder and get a searchable view of visible
+processes using it, including process ancestry and the files each process has open,
+mapped, or locked.
+
+From the same TUI you can inspect detailed file usage, switch to a dedicated
+locked-files view, sort and filter results, and terminate the process or one of
+its parents when needed.
+
+Search is inspired by JetBrains-style navigation, with fragments, CamelCase
+abbreviations, and wildcards for quickly narrowing file names.
+
+| Search | Example match |
+| --- | --- |
+| `dll` | `plugin.dll` |
+| `MIMJWT` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
+| `micro*dll` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
+| `FLEC*` | `FileLockExampleCli.dll`, `FileLockExampleCli.deps.json` |
+| `FLEC*.json` | `FileLockExampleCli.deps.json` |
 
 ## Search
 
