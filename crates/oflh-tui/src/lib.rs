@@ -214,7 +214,7 @@ fn open_link(url: &'static str) -> std::io::Result<()> {
     #[cfg(windows)]
     let mut command = {
         let mut command = Command::new("rundll32.exe");
-        c.args(["url.dll,FileProtocolHandler", url]);
+        command.args(["url.dll,FileProtocolHandler", url]);
         command
     };
     #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
