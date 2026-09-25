@@ -1,0 +1,40 @@
+  oflh  /  process details
+  dotnet   PID 424242 · alice
+  EXE /usr/bin/dotnet
+  CWD /build
+  PARENT parent (424241)
+  CPU 2.4% machine · RAM 31.0 MiB RSS
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │/ Search files, DLLs, paths… · * wildcard                                                                                                                 │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  ALL USAGES · 3 of 3 usages · 1 locked files   1 / 3
+  FILE FileLockExampleCli.dll
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │FILE                                                   RELATION       ACCESS        DIRECTORY                                                             │
+  │FileLockExampleCli.dll                                 locked         read/write    /build                                                                │
+  │FileLockExampleCli.deps.json                           open           unknown       /build                                                                │
+  │other.dll                                              open           unknown       /build                                                                │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  SELECTED PATH · locked · read/write
+  /build/FileLockExampleCli.dll · POSIX WRITE
+
+  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  / search · l locks only · ↑↓ select · ←→ path · r refresh · a auto · k stop · x force · R GitHub · D Donate · Esc back

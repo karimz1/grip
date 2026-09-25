@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, architecture/redesign-in-rust]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -13,72 +13,54 @@ permissions:
   contents: read
 jobs:
   test:
-    name: Native TUI + scanner / ${{ matrix.os }} / ${{ matrix.arch }}
+    name: Native Rust TUI + scanner / ${{ matrix.os }} / ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {os: linux, arch: amd64, runner: ubuntu-24.04, race: true}
-          - {os: linux, arch: arm64, runner: ubuntu-24.04-arm, race: true}
-          - {os: darwin, arch: amd64, runner: macos-15-intel, race: true}
-          - {os: darwin, arch: arm64, runner: macos-15, race: true}
-          - {os: windows, arch: amd64, runner: windows-2025, race: true}
-          - {os: windows, arch: arm64, runner: windows-11-arm, race: false}
+          - {os: linux, arch: amd64, runner: ubuntu-24.04}
+          - {os: linux, arch: arm64, runner: ubuntu-24.04-arm}
+          - {os: darwin, arch: amd64, runner: macos-15-intel}
+          - {os: darwin, arch: arm64, runner: macos-15}
+          - {os: windows, arch: amd64, runner: windows-2025}
+          - {os: windows, arch: arm64, runner: windows-11-arm}
     defaults:
       run:
         shell: bash
     env:
-      GOARCH: ${{ matrix.arch }}
-      OFLH_VERSION: ${{ inputs.version || 'dev' }}
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      RELEASE_TAG: ${{ inputs.version || 'dev' }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.x'
-      - name: Validate version and formatting
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Format and lint
         run: |
-          python scripts/release.py validate --version "$OFLH_VERSION"
-          UNFORMATTED="$(gofmt -l cmd internal)"
-          if [ -n "$UNFORMATTED" ]; then printf "%s\n" "$UNFORMATTED"; exit 1; fi
-          go mod verify
-      - name: Unit and native scanner integration tests
-        env:
-          CGO_ENABLED: '0'
-        run: go test -p=1 -count=1 -timeout=5m ./...
-      - name: Native feature contract (metrics, ancestry, locks and safe termination)
-        env:
-          CGO_ENABLED: '0'
-        run: go test -v -count=1 -timeout=5m ./internal/scanner -run '^TestNative'
-      - name: Real TUI startup and keyboard workflow
-        env:
-          CGO_ENABLED: '0'
-        run: go test -v -count=3 -timeout=3m ./internal/tui -run '^TestProgramSmoke'
-      - name: Race detector
-        if: matrix.race
-        env:
-          CGO_ENABLED: '1'
-        run: go test -race -p=1 -count=1 -timeout=5m ./...
-      - name: Static analysis
-        run: go vet ./...
-      - name: Packaging tests
-        run: python -m unittest discover -s scripts -p 'test_*.py'
-      - name: Build standalone executable
-        env:
-          CGO_ENABLED: '0'
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Unit and native lock tests
+        run: cargo test --workspace --exclude oflh --locked
+      - name: Real terminal workflow
+        run: cargo test -p oflh --locked
+      - name: Repeat real terminal workflow
         run: |
-          VERSION="${OFLH_VERSION#v}"
-          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o bin/oflh${{ matrix.os == 'windows' && '.exe' || '' }} ./cmd/oflh
-          ./bin/oflh${{ matrix.os == 'windows' && '.exe' || '' }} --version
-          ./bin/oflh${{ matrix.os == 'windows' && '.exe' || '' }} --help
+          cargo test -p oflh --test terminal --locked
+          cargo test -p oflh --test terminal --locked
+      - name: Build release executable only
+        run: |
+          if [ "$RELEASE_TAG" = dev ]; then
+            cargo build --release --locked --bin oflh
+          else
+            OFLH_VERSION="${RELEASE_TAG#v}" cargo build --release --locked --bin oflh
+          fi
+          ./target/release/oflh${{ matrix.os == 'windows' && '.exe' || '' }} --version
+          ./target/release/oflh${{ matrix.os == 'windows' && '.exe' || '' }} --help
       - name: Package tested executable
-        run: python scripts/release.py package --version "$OFLH_VERSION" --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --binary bin/oflh${{ matrix.os == 'windows' && '.exe' || '' }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        run: cargo xtask package --version "$RELEASE_TAG" --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --binary target/release/oflh${{ matrix.os == 'windows' && '.exe' || '' }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: oflh-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/*

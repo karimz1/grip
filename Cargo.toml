@@ -1,0 +1,36 @@
+[workspace]
+members = ["crates/*", "xtask"]
+default-members = ["crates/oflh"]
+resolver = "3"
+
+[workspace.package]
+version = "0.0.10-rc.1"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/karimz1/open-file-lock-handle"
+
+[workspace.dependencies]
+oflh-core = { path = "crates/oflh-core" }
+oflh-platform = { path = "crates/oflh-platform" }
+oflh-tui = { path = "crates/oflh-tui" }
+thiserror = "2"
+libc = "0.2"
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"] }
+crossterm = { version = "0.29", features = ["use-dev-tty"] }
+unicode-width = "0.2"
+unicode-general-category = "1"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+# Keep unwinding so terminal and native handle guards can restore resources.
+panic = "unwind"

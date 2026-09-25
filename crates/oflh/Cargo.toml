@@ -1,0 +1,25 @@
+[package]
+name = "oflh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+oflh-core.workspace = true
+oflh-platform.workspace = true
+oflh-tui.workspace = true
+
+[[bin]]
+name = "oflh"
+path = "src/main.rs"
+
+[dev-dependencies]
+portable-pty = "0.9"
+vt100 = "0.16"
+tempfile = "3"

@@ -1,0 +1,20 @@
+  oflh  /  process details
+  dotnet   PID 424242 · alice
+  CPU 2.4% · RAM 31.0 MiB · PARENT 0
+  ╭──────────────────────────────────────────╮
+  │/ Search files, DLLs, paths… · * wildcard │
+  ╰──────────────────────────────────────────╯
+  ALL USAGES · 3 of 3 usages · 1 locked files
+  FILE FileLockExampleCli.dll
+  ╭──────────────────────────────────────────╮
+  │FILE                           RELATION   │
+  │FileLockExampleCli.dll         locked     │
+  │FileLockExampleCli.deps.json   open       │
+  │other.dll                      open       │
+  ╰──────────────────────────────────────────╯
+  SELECTED PATH · locked · read/write
+  /build/FileLockExampleCli.dll · POSIX WRITE
+
+  ────────────────────────────────────────────
+  ↑↓ select · / search · l locks · r refresh
+  R GitHub · D Donate · Esc back
