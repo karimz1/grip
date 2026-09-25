@@ -4,6 +4,7 @@
 
 # oflh — Find locked files and the processes using them
 
+[![GitHub Downloads](https://img.shields.io/github/downloads/karimz1/open-file-lock-handle/total.svg)](https://github.com/karimz1/open-file-lock-handle/releases)
 [![Rust](https://img.shields.io/badge/Built_with-Rust-b7410e?logo=rust&logoColor=white)](#performance)
 [![CI](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml/badge.svg)](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml)
 [![Platforms](https://img.shields.io/badge/Platforms-Linux_%C2%B7_macOS_%C2%B7_Windows-6d28d9)](#platform-behavior)
