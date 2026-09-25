@@ -350,13 +350,13 @@ impl App {
             self.refilter()
         }
     }
-    fn insert(&mut self, c: char) {
+    fn insert(&mut self, character: char) {
         if self.input().chars().count() >= 256 {
             return;
         }
         let position = self.input_cursor;
-        self.input_mut().insert(position, c);
-        self.input_cursor += c.len_utf8();
+        self.input_mut().insert(position, character);
+        self.input_cursor += character.len_utf8();
         self.changed()
     }
     fn begin_search(&mut self) {
@@ -364,78 +364,89 @@ impl App {
         self.edit_before = self.input().to_owned();
         self.input_cursor = self.input().len()
     }
+    fn edit_key(&mut self, key: KeyEvent) {
+        match key.code {
+            K::Enter => self.editing = false,
+            K::Esc => {
+                let before = self.edit_before.clone();
+                *self.input_mut() = before;
+                self.editing = false;
+                self.changed()
+            }
+            K::Backspace => {
+                let position = self.input_cursor;
+                if let Some((prev, _)) = self.input()[..position].char_indices().next_back() {
+                    self.input_mut().drain(prev..position);
+                    self.input_cursor = prev;
+                    self.changed()
+                }
+            }
+            K::Delete => {
+                let position = self.input_cursor;
+                if let Some(character) = self.input()[position..].chars().next() {
+                    self.input_mut()
+                        .drain(position..position + character.len_utf8());
+                    self.changed()
+                }
+            }
+            K::Left => {
+                self.input_cursor = self.input()[..self.input_cursor]
+                    .char_indices()
+                    .next_back()
+                    .map_or(0, |(i, _)| i)
+            }
+            K::Right => {
+                if let Some(character) = self.input()[self.input_cursor..].chars().next() {
+                    self.input_cursor += character.len_utf8()
+                }
+            }
+            K::Home => self.input_cursor = 0,
+            K::End => self.input_cursor = self.input().len(),
+            K::Up | K::Down => self.navigate(key.code),
+            K::Char('u') if key.modifiers.contains(M::CONTROL) => {
+                self.input_mut().clear();
+                self.input_cursor = 0;
+                self.changed()
+            }
+            K::Char(character) if !key.modifiers.intersects(M::CONTROL | M::ALT) => {
+                self.insert(character)
+            }
+            _ => {}
+        }
+    }
+
+    fn help_key(&mut self, key: K) -> Effect {
+        match key {
+            K::Esc | K::Char('q') | K::Char('?') => {
+                self.screen = Screen::Main;
+                self.scroll = 0
+            }
+            K::Up => self.scroll = self.scroll.saturating_sub(1),
+            K::Down | K::Char('j') => self.scroll += 1,
+            K::PageDown => self.scroll += self.page,
+            K::PageUp => self.scroll = self.scroll.saturating_sub(self.page),
+            K::Char('R') => {
+                return Effect::Link("https://github.com/karimz1/open-file-lock-handle");
+            }
+            K::Char('D') => return Effect::Link("https://buymeacoffee.com/karimz1"),
+            _ => {}
+        }
+        Effect::None
+    }
+
     pub fn key(&mut self, key: KeyEvent) -> Effect {
         if key.modifiers.contains(M::CONTROL) && key.code == K::Char('c') {
             return Effect::Quit;
         }
         if self.editing {
-            match key.code {
-                K::Enter => self.editing = false,
-                K::Esc => {
-                    let before = self.edit_before.clone();
-                    *self.input_mut() = before;
-                    self.editing = false;
-                    self.changed()
-                }
-                K::Backspace => {
-                    let position = self.input_cursor;
-                    if let Some((prev, _)) = self.input()[..position].char_indices().next_back() {
-                        self.input_mut().drain(prev..position);
-                        self.input_cursor = prev;
-                        self.changed()
-                    }
-                }
-                K::Delete => {
-                    let position = self.input_cursor;
-                    if let Some(c) = self.input()[position..].chars().next() {
-                        self.input_mut().drain(position..position + c.len_utf8());
-                        self.changed()
-                    }
-                }
-                K::Left => {
-                    self.input_cursor = self.input()[..self.input_cursor]
-                        .char_indices()
-                        .next_back()
-                        .map_or(0, |(i, _)| i)
-                }
-                K::Right => {
-                    if let Some(c) = self.input()[self.input_cursor..].chars().next() {
-                        self.input_cursor += c.len_utf8()
-                    }
-                }
-                K::Home => self.input_cursor = 0,
-                K::End => self.input_cursor = self.input().len(),
-                K::Up | K::Down => self.navigate(key.code),
-                K::Char('u') if key.modifiers.contains(M::CONTROL) => {
-                    self.input_mut().clear();
-                    self.input_cursor = 0;
-                    self.changed()
-                }
-                K::Char(c) if !key.modifiers.intersects(M::CONTROL | M::ALT) => self.insert(c),
-                _ => {}
-            }
+            self.edit_key(key);
             return Effect::None;
         }
         if self.screen == Screen::Confirm {
             return self.confirm_key(key.code);
         }
         if self.screen == Screen::Help {
-            match key.code {
-                K::Esc | K::Char('q') | K::Char('?') => {
-                    self.screen = Screen::Main;
-                    self.scroll = 0
-                }
-                K::Up => self.scroll = self.scroll.saturating_sub(1),
-                K::Down | K::Char('j') => self.scroll += 1,
-                K::PageDown => self.scroll += self.page,
-                K::PageUp => self.scroll = self.scroll.saturating_sub(self.page),
-                K::Char('R') => {
-                    return Effect::Link("https://github.com/karimz1/open-file-lock-handle");
-                }
-                K::Char('D') => return Effect::Link("https://buymeacoffee.com/karimz1"),
-                _ => {}
-            }
-            return Effect::None;
+            return self.help_key(key.code);
         }
         if let Some(tree) = &mut self.tree {
             match key.code {

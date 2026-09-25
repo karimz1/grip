@@ -53,11 +53,11 @@ impl Query {
         Self {
             terms: text
                 .split_whitespace()
-                .map(|scratch| {
-                    let text = scratch.to_lowercase();
+                .map(|term| {
+                    let text = term.to_lowercase();
                     let chunks = text
                         .split('*')
-                        .map(|scratch| scratch.chars().collect())
+                        .map(|chunk| chunk.chars().collect())
                         .collect();
                     Term { text, chunks }
                 })
@@ -143,9 +143,11 @@ impl Term {
         true
     }
 }
-fn lower(c: char) -> char {
-    c.to_lowercase().next().unwrap_or(c)
+fn lower(character: char) -> char {
+    character.to_lowercase().next().unwrap_or(character)
 }
+/// Find the earliest matching end, allowing abbreviation gaps only at word boundaries
+/// within one path component. Reuse dynamic-programming buffers across terms.
 fn match_end(query: &[char], field: &Field, start: usize, scratch: &mut Scratch) -> Option<usize> {
     if query.is_empty() {
         return Some(start);
@@ -170,12 +172,12 @@ fn match_end(query: &[char], field: &Field, start: usize, scratch: &mut Scratch)
     for (query_index, query_character) in query.iter().enumerate() {
         scratch.next.fill(false);
         let mut earlier = false;
-        for (j, &c) in chars.iter().enumerate().take(best).skip(start) {
-            if c == '/' || c == '\\' {
+        for (j, &character) in chars.iter().enumerate().take(best).skip(start) {
+            if character == '/' || character == '\\' {
                 earlier = false;
                 continue;
             }
-            if lower(c) == *query_character {
+            if lower(character) == *query_character {
                 scratch.next[j] = if query_index == 0 {
                     field.boundaries[j]
                 } else {

@@ -4,7 +4,7 @@
 
 # oflh — Find locked files and the processes using them
 
-[![Rust](https://img.shields.io/badge/Built_with-Rust-b7410e?logo=rust&logoColor=white)](#rust-performance--v010)
+[![Rust](https://img.shields.io/badge/Built_with-Rust-b7410e?logo=rust&logoColor=white)](#performance)
 [![CI](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml/badge.svg)](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml)
 [![Platforms](https://img.shields.io/badge/Platforms-Linux_%C2%B7_macOS_%C2%B7_Windows-6d28d9)](#platform-behavior)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -32,14 +32,9 @@ oflh .                   # Inspect the current directory
 ```
 
 **Start here:** [Install](#installation) · [Quick start](#getting-started) ·
-[Go vs Rust performance](#rust-performance--v010) · [Keyboard shortcuts](#keyboard-reference) ·
+[Go vs Rust performance](#performance) · [Keyboard shortcuts](#keyboard-reference) ·
 [Platform coverage](#platform-behavior) · [Report a bug](https://github.com/karimz1/open-file-lock-handle/issues) ·
 [Donate](https://buymeacoffee.com/karimz1)
-
-> **Rust release transition:** v0.1.0 is the upcoming Rust release line. This
-> branch currently identifies as `0.0.10-rc.1`; v0.1.0 has not been published.
-> Homebrew and GitHub Releases provide the latest published version. Build this
-> branch from source to try the Rust implementation now.
 
 ## Installation
 
@@ -128,10 +123,9 @@ support, with enough width for the process table and side panel. I recommend
 recommendation; I am not affiliated with the project. Ghostty is optional, and
 `oflh` does not depend on a particular terminal emulator.
 
-## Rust performance — v0.1.0
+## Performance
 
-The Rust redesign targets v0.1.0 and replaces the Go application and release tools
-with a Cargo workspace. The UI uses Ratatui; scanners call native OS interfaces.
+Starting with v0.1.0, `oflh` uses Rust for the application and release tooling. The UI uses Ratatui; scanners call native OS interfaces.
 Background scans keep input responsive, resource sampling avoids a second file
 scan, and compiled search fields reuse matching buffers. Tests and developer tools
 are excluded from the distributed executable.
@@ -139,7 +133,7 @@ are excluded from the distributed executable.
 Measured against the preceding Go implementation on the **same Linux x86-64
 workstation and fixture**:
 
-| Operation | Go | Rust candidate |
+| Operation | Go | Rust |
 | --- | ---: | ---: |
 | First terminal frame, median | 42.5 ms | **1.7 ms** |
 | Directory scan, median | 218.8 ms | **100.6 ms** |
@@ -151,9 +145,8 @@ workstation and fixture**:
 
 Thirty warm scans per target and five startup runs; 512 open handles, 64 mappings,
 and 16 locks. Both scanners produced identical observation rows for this fixture.
-These are measurements of the Rust candidate, **not a published v0.1.0 benchmark**
-or a speed guarantee for every machine. Windows and macOS performance has not
-been measured here. See the [methodology, raw results, and limitations](docs/rust-validation.md).
+Results depend on the workload and machine. This comparison covers Linux;
+Windows and macOS timings are not included. See the [methodology, raw results, and limitations](docs/performance.md).
 
 ## Why oflh?
 
@@ -360,8 +353,9 @@ are test data, not runtime files or application dependencies.
 cargo xtask check  # rustfmt, Clippy, and workspace tests
 ```
 
-See [Development](docs/development.md) for test commands and coverage details,
-and [Releasing](docs/releasing.md) for packaging and publishing.
+See [Contributing](CONTRIBUTING.md) to get started, [Development](docs/development.md)
+for build and test commands, and [Architecture](docs/architecture.md) for design
+and safety boundaries. Maintainers can find packaging instructions in [Releasing](docs/releasing.md).
 
 ## Project information
 

@@ -1,5 +1,6 @@
 //! Developer/release executable. Never linked into the installed application.
 #![forbid(unsafe_code)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -40,11 +41,11 @@ fn digest(path: &Path) -> Result<String> {
     let mut hash = Sha256::new();
     let mut buf = [0u8; 65536];
     loop {
-        let n = input.read(&mut buf)?;
-        if n == 0 {
+        let bytes_read = input.read(&mut buf)?;
+        if bytes_read == 0 {
             break;
         }
-        hash.update(&buf[..n]);
+        hash.update(&buf[..bytes_read]);
     }
     Ok(format!("{:x}", hash.finalize()))
 }

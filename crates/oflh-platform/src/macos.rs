@@ -101,14 +101,14 @@ fn bytes(chars: &[i8]) -> Vec<u8> {
         .collect()
 }
 fn vnode_path(vnode: &libc::vnode_info_path) -> PathBuf {
-    let bsd_info: Vec<u8> = vnode
+    let path_bytes: Vec<u8> = vnode
         .vip_path
         .iter()
         .flatten()
         .take_while(|&&c| c != 0)
         .map(|&c| c as u8)
         .collect();
-    PathBuf::from(std::ffi::OsStr::from_bytes(&bsd_info))
+    PathBuf::from(std::ffi::OsStr::from_bytes(&path_bytes))
 }
 fn read_process(pid: u32) -> Result<(Process, u32)> {
     let bsd_info: libc::proc_bsdinfo = info(pid, 0)?;
@@ -124,7 +124,7 @@ fn read_process(pid: u32) -> Result<(Process, u32)> {
     let executable = if returned > 0 {
         let end = path
             .iter()
-            .position(|bsd_info| *bsd_info == 0)
+            .position(|byte| *byte == 0)
             .unwrap_or(path.len());
         PathBuf::from(std::ffi::OsStr::from_bytes(&path[..end]))
     } else {
@@ -207,7 +207,12 @@ impl Backend for Native {
             }
             pids.resize(pids.len() * 2, 0);
         }
-        let mut snapshot=Snapshot{warnings:vec!["macOS: first POSIX conflict per readable file; flock-only locks and additional ranges may be missed.".into()],..Snapshot::default()};
+        let mut snapshot = Snapshot {
+            warnings: vec![
+                "macOS: first POSIX conflict per readable file; flock-only locks and additional ranges may be missed.".into(),
+            ],
+            ..Snapshot::default()
+        };
         let mut limited = 0;
         let mut users = HashMap::new();
         for pid in pids {

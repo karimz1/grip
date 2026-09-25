@@ -23,28 +23,40 @@ Tests and developer tools are separate executables and dev-dependencies. The
 application needs no Go or Python runtime. Release builds use thin LTO, one
 codegen unit, stripped symbols, and unwinding for RAII terminal cleanup.
 
-## Prepare a local candidate
+## Prepare a version
 
-The workspace currently identifies itself as `0.0.10-rc.1`.
+Update `workspace.package.version` in `Cargo.toml` and refresh `Cargo.lock` with
+`cargo check`. Use semantic versions: `0.1.0-rc.1` for a candidate or `0.1.0` for a
+stable release. Record user-visible changes in the release notes, not in temporary
+README status messages.
+
+Run `cargo xtask check`, review all six native CI jobs, and commit the version
+change before tagging. The commands below use `v0.1.0` as an example; substitute
+the intended version consistently.
+
+## Package locally
 
 ```sh
-cargo xtask check
 cargo build --release --locked --bin oflh
-cargo xtask package --version v0.0.10-rc.1 --os linux --arch amd64 --binary target/release/oflh
+cargo xtask package --version v0.1.0 --os linux --arch amd64 --binary target/release/oflh
 ```
 
-Use the corresponding OS/architecture and `.exe` suffix on Windows. To assemble
-a complete candidate, download all six artifacts from the same green native CI
-run into `dist`, then run:
+Use the appropriate OS/architecture and `.exe` suffix on Windows. `package`
+copies an existing executable; it does not change its embedded version. Check
+`oflh --version` before packaging.
+
+To assemble a complete release, download all six artifacts from the same passing
+CI revision into `dist`, then run:
 
 ```sh
-cargo xtask assemble --version v0.0.10-rc.1 --output dist --formula bin/oflh-rc.rb
+mkdir -p bin
+cargo xtask assemble --version v0.1.0 --output dist --formula bin/oflh.rb
+(cd dist && sha256sum --check checksums.txt)
 ```
 
 The assembler rejects missing, empty, or unexpected artifacts and writes SHA-256
-checksums plus the candidate formula. Create `bin` first. Preparing locally does
-not publish a release or push a tag. Candidate formula URLs become available only
-if that release is subsequently published.
+checksums and a Homebrew formula. Assembly is local; publication requires the
+release workflow below. Formula URLs refer to the corresponding GitHub release.
 
 ## Create a draft
 
@@ -77,17 +89,5 @@ published releases, and allows updating an existing draft. Do not move a publish
 5. Publishing triggers **Update Homebrew tap**, which immediately dispatches **Update oflh** in `homebrew-tap`.
 
 The tap updater only follows stable **published** releases. It verifies the four Unix executables against the release checksums and generates
-`Formula/oflh.rb` locally. On the first renamed release, it also migrates the legacy
-`grip` formula using `formula_renames.json`.
-It leaves other tools' formulae untouched. The next `brew update` makes the new version
+`Formula/oflh.rb` locally. It leaves other tools' formulae untouched. The next `brew update` makes the new version
 available via `brew install karimz1/tap/oflh` on Linux or macOS, Intel or ARM.
-
-## Backend API references
-
-- [Linux proc](https://www.kernel.org/doc/html/latest/filesystems/proc.html)
-- [Apple libproc](https://github.com/apple-oss-distributions/xnu/blob/main/libsyscall/wrappers/libproc/libproc.h)
-- [Apple process structures](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info.h)
-- [Windows Restart Manager registration](https://learn.microsoft.com/en-us/windows/win32/api/restartmanager/nf-restartmanager-rmregisterresources)
-- [Windows resource users](https://learn.microsoft.com/en-us/windows/win32/api/restartmanager/nf-restartmanager-rmgetlist)
-- [Windows Toolhelp snapshots](https://learn.microsoft.com/en-us/windows/win32/api/tlhelp32/nf-tlhelp32-createtoolhelp32snapshot)
-- [Homebrew taps](https://docs.brew.sh/Taps)

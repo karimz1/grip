@@ -80,7 +80,7 @@ fn read_process(pid: u32) -> Result<Process> {
     let (identity, _) = times(&handle, pid)?;
     let mut buf = vec![0u16; 32768];
     let mut len = buf.len() as u32;
-    // SAFETY: buffer capacity matches len; h remains open.
+    // SAFETY: buffer capacity matches len; the owned handle remains open.
     let executable =
         if unsafe { QueryFullProcessImageNameW(handle.0, 0, buf.as_mut_ptr(), &mut len) } != 0 {
             path(&buf[..len as usize])
@@ -139,7 +139,7 @@ fn username(pid: u32) -> String {
     let mut name_length = name.len() as u32;
     let mut domain_length = domain.len() as u32;
     let mut kind = 0;
-    // SAFETY: SID belongs to live data buffer; names have lengths specified by n/d.
+    // SAFETY: SID belongs to live data buffer; names have lengths specified by name_length/domain_length.
     if unsafe {
         LookupAccountSidW(
             null(),
@@ -342,7 +342,12 @@ fn process_snapshot() -> Result<(Handle, PROCESSENTRY32W)> {
 impl Backend for Native {
     fn scan(&mut self, target: &Target, cancel: &Cancellation) -> Result<Snapshot> {
         cancel.check()?;
-        let mut snapshot=Snapshot{warnings:vec!["Windows: CWD, directory handles and deleted files are not visible. Sharing conflicts are per file; reported users are not proven lock owners. Byte-range locks are not enumerated.".into()],..Snapshot::default()};
+        let mut snapshot = Snapshot {
+            warnings: vec![
+                "Windows: CWD, directory handles and deleted files are not visible. Sharing conflicts are per file; reported users are not proven lock owners. Byte-range locks are not enumerated.".into(),
+            ],
+            ..Snapshot::default()
+        };
         let mut limited = 0;
         let mut parents = HashMap::new();
         let target_id = if target.directory {
@@ -381,8 +386,11 @@ impl Backend for Native {
                             },
                             "snapshot modules",
                         );
-                        if !matches!(&modules,Err(Error::Io{source,..}) if source.raw_os_error()==Some(ERROR_BAD_LENGTH as i32))
-                        {
+                        if !matches!(
+                            &modules,
+                            Err(Error::Io { source, .. })
+                                if source.raw_os_error() == Some(ERROR_BAD_LENGTH as i32)
+                        ) {
                             break;
                         }
                     }
@@ -438,7 +446,7 @@ impl Backend for Native {
             cancel.check()?;
             if target.directory {
                 let entries = match std::fs::read_dir(&path) {
-                    Ok(error) => error,
+                    Ok(entries) => entries,
                     Err(_) => {
                         limited += 1;
                         continue;
@@ -563,7 +571,7 @@ impl Backend for Native {
             raw.push((identity, cpu, memory));
         }
         let total = self.sampler.clock().saturating_mul(
-            std::thread::available_parallelism().map_or(1, |name_length| name_length.get()) as u64,
+            std::thread::available_parallelism().map_or(1, |count| count.get()) as u64,
         );
         Ok(self.sampler.sample(raw, total))
     }
@@ -591,7 +599,7 @@ impl Backend for Native {
             sent: 0,
             handle: handle.0,
         };
-        // SAFETY: callback receives a pointer to state, valid for synchronous EnumWindows. h remains open.
+        // SAFETY: callback receives a pointer to state, valid for synchronous EnumWindows. the owned handle remains open.
         if unsafe { EnumWindows(Some(close_window), (&mut state as *mut CloseState) as isize) } == 0
         {
             return Err(io("enumerate windows", std::io::Error::last_os_error()));

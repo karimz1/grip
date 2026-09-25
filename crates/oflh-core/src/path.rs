@@ -84,14 +84,37 @@ fn clean(path: &Path) -> PathBuf {
 fn normalize(path: &Path) -> PathBuf {
     #[cfg(windows)]
     {
-        let normalized = clean(path)
-            .to_string_lossy()
-            .replace('/', "\\")
-            .to_lowercase();
-        if let Some(normalized) = normalized.strip_prefix("\\\\?\\unc\\") {
-            return PathBuf::from(format!("\\\\{normalized}"));
+        use std::ffi::OsString;
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+        // Windows paths can contain unpaired UTF-16 surrogates. Preserve them
+        // during case folding so distinct native names never alias through U+FFFD.
+        let cleaned = clean(path);
+        let mut normalized = Vec::new();
+        let mut encoded = [0u16; 2];
+        for character in char::decode_utf16(cleaned.as_os_str().encode_wide()) {
+            match character {
+                Ok('/') => normalized.push(u16::from(b'\\')),
+                Ok(character) => {
+                    for lowercase in character.to_lowercase() {
+                        normalized.extend_from_slice(lowercase.encode_utf16(&mut encoded));
+                    }
+                }
+                Err(error) => normalized.push(error.unpaired_surrogate()),
+            }
         }
-        PathBuf::from(normalized.strip_prefix("\\\\?\\").unwrap_or(&normalized))
+        let verbatim_prefix: Vec<_> = "\\\\?\\".encode_utf16().collect();
+        let unc_prefix: Vec<_> = "\\\\?\\unc\\".encode_utf16().collect();
+        if let Some(suffix) = normalized.strip_prefix(unc_prefix.as_slice()) {
+            let mut network_path = vec![u16::from(b'\\'); 2];
+            network_path.extend_from_slice(suffix);
+            return PathBuf::from(OsString::from_wide(&network_path));
+        }
+        PathBuf::from(OsString::from_wide(
+            normalized
+                .strip_prefix(verbatim_prefix.as_slice())
+                .unwrap_or(&normalized),
+        ))
     }
     #[cfg(not(windows))]
     {
@@ -100,4 +123,37 @@ fn normalize(path: &Path) -> PathBuf {
 }
 pub fn contains(parent: &Path, child: &Path) -> bool {
     normalize(child).starts_with(normalize(parent))
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+
+    #[test]
+    fn comparison_preserves_distinct_unpaired_surrogates() {
+        let prefix: Vec<_> = "C:\\files\\".encode_utf16().collect();
+        let mut first = prefix.clone();
+        first.push(0xd800);
+        let mut second = prefix;
+        second.push(0xd801);
+        let first = PathBuf::from(OsString::from_wide(&first));
+        let second = PathBuf::from(OsString::from_wide(&second));
+        assert_ne!(normalize(&first), normalize(&second));
+        assert!(!contains(&first, &second));
+        assert!(contains(&first, &first.join("child")));
+    }
+
+    #[test]
+    fn windows_prefixes_and_case_are_equivalent() {
+        assert_eq!(
+            normalize(Path::new("C:\\BUILD\\File.dll")),
+            normalize(Path::new("\\\\?\\C:\\build\\file.dll"))
+        );
+        assert_eq!(
+            normalize(Path::new("\\\\server\\share\\File.dll")),
+            normalize(Path::new("\\\\?\\UNC\\SERVER\\share\\file.dll"))
+        );
+    }
 }

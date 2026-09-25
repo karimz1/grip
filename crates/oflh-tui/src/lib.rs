@@ -1,5 +1,7 @@
 //! A single-owner UI with bounded background work and event-driven rendering.
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 mod app;
 mod view;
 mod worker;
@@ -86,13 +88,13 @@ pub fn run(target: Target, version: String, backend: Box<dyn Backend>) -> std::i
                 }
                 dirty = true;
             }
-            Ok(Event::Input(Ok(TerminalEvent::Paste(s)))) => {
-                app.paste(&s);
+            Ok(Event::Input(Ok(TerminalEvent::Paste(text)))) => {
+                app.paste(&text);
                 dirty = true
             }
             Ok(Event::Input(Ok(TerminalEvent::Resize(..)))) => dirty = true,
-            Ok(Event::Input(Err(e))) => return Err(e),
-            Ok(Event::Scan(g, result)) if g == generation => {
+            Ok(Event::Input(Err(error))) => return Err(error),
+            Ok(Event::Scan(result_generation, result)) if result_generation == generation => {
                 app.scanning = false;
                 sampling = false;
                 match result {
@@ -101,14 +103,14 @@ pub fn run(target: Target, version: String, backend: Box<dyn Backend>) -> std::i
                         sample = Some(Instant::now() + Duration::from_secs(1))
                     }
                     Err(Error::Cancelled) => {}
-                    Err(e) => {
-                        app.status = format!("Scan failed: {e}");
+                    Err(error) => {
+                        app.status = format!("Scan failed: {error}");
                         app.error = true
                     }
                 }
                 dirty = true
             }
-            Ok(Event::Metrics(g, result)) if g == generation => {
+            Ok(Event::Metrics(result_generation, result)) if result_generation == generation => {
                 sampling = false;
                 if let Ok(metrics) = result {
                     app.metrics(metrics)
@@ -157,8 +159,8 @@ pub fn run(target: Target, version: String, backend: Box<dyn Backend>) -> std::i
                 dirty = true
             }
             Effect::Link(url) => {
-                if let Err(e) = open_link(url) {
-                    app.status = format!("Open browser: {e}");
+                if let Err(error) = open_link(url) {
+                    app.status = format!("Open browser: {error}");
                     app.error = true
                 }
                 dirty = true

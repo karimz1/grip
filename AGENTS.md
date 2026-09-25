@@ -35,3 +35,9 @@
 - Keep release packaging and checksums in the Rust `xtask` workflow. Release automation must consume the six tested native artifacts, reject unexpected/missing artifacts, and refuse to overwrite a published release.
 - Respect requested branch names and release scope. A request for a local release candidate does not authorize pushing a release tag or publishing a release.
 - Preserve unrelated work. Describe changes, validation, measured performance, and remaining limitations honestly.
+
+## Privacy
+
+- Never commit credentials, tokens, private keys, personal contact details, private paths, or machine hostnames in code, fixtures, screenshots, logs, or benchmark data. Public project names and links may be retained.
+- Use synthetic data in examples and test fixtures. Record only the environment details needed to reproduce a measurement.
+- If sensitive information is found, report its category and location without echoing the value. Remove it from current files; do not rewrite shared history or rotate credentials without authorization.

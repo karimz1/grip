@@ -1,4 +1,6 @@
 //! Native OS boundaries. A scanner is owned by one worker, never shared concurrently.
+#![deny(missing_docs)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use oflh_core::*;
 use std::collections::HashMap;
 #[cfg(not(target_os = "linux"))]
@@ -85,10 +87,10 @@ impl Sampler {
 }
 fn apply_metrics(snapshot: &mut Snapshot, metrics: Vec<(Identity, Metrics)>) {
     let metrics: HashMap<_, _> = metrics.into_iter().collect();
-    for p in &mut snapshot.processes {
-        if let Some(m) = metrics.get(&p.identity) {
-            p.memory = m.memory;
-            p.cpu = m.cpu;
+    for process in &mut snapshot.processes {
+        if let Some(sample) = metrics.get(&process.identity) {
+            process.memory = sample.memory;
+            process.cpu = sample.cpu;
         }
     }
 }

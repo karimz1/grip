@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use std::{ffi::OsString, io::IsTerminal, process::ExitCode};
 const VERSION: &str = match option_env!("OFLH_VERSION") {
     Some(v) => v,
