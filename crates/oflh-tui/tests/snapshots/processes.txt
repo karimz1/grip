@@ -37,4 +37,4 @@
   Enter inspect · Space select · m RAM / c CPU / n name / p PID
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   1/2 tabs · / search · ↑↓ move · Enter inspect · Space select · Ctrl+A all · Tab/→ tree · i panel · m/c RAM/CPU · a auto · r refresh · k stop · x force
-  ? help · q quit
+  ? help · R GitHub · D Donate · q quit

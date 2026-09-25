@@ -145,7 +145,6 @@ fn terminal_text_is_sanitized() {
 
 #[test]
 fn golden_screens() {
-    use std::fmt::Write;
     let mut a = app();
     a.target.path = "/build".into();
     a.snapshot.processes[0].cpu = Some(2.4);
@@ -186,47 +185,7 @@ fn golden_screens() {
             text,
             "{name}"
         );
-        if let Some(dir) = std::env::var_os("OFLH_VISUAL_DIR") {
-            let mut svg = format!(
-                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\"><rect width=\"100%\" height=\"100%\" fill=\"#202028\"/>",
-                w * 9,
-                h * 18
-            );
-            for y in 0..h {
-                for x in 0..w {
-                    let cell = &buffer[(x, y)];
-                    let color = |c: ratatui::style::Color, default: &str| match c {
-                        ratatui::style::Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
-                        ratatui::style::Color::DarkGray => "#74748a".into(),
-                        ratatui::style::Color::White => "#ffffff".into(),
-                        _ => default.into(),
-                    };
-                    let bg = color(cell.bg, "#202028");
-                    let fg = color(cell.fg, "#b8b8cc");
-                    if bg != "#202028" {
-                        write!(
-                            svg,
-                            "<rect x=\"{}\" y=\"{}\" width=\"9\" height=\"18\" fill=\"{bg}\"/>",
-                            x * 9,
-                            y * 18
-                        )
-                        .unwrap();
-                    }
-                    let symbol = cell
-                        .symbol()
-                        .replace('&', "&amp;")
-                        .replace('<', "&lt;")
-                        .replace('>', "&gt;");
-                    if symbol != " " {
-                        write!(svg,"<text x=\"{}\" y=\"{}\" fill=\"{fg}\" font-family=\"DejaVu Sans Mono\" font-size=\"14\">{symbol}</text>",x*9,y*18+14).unwrap();
-                    }
-                }
-            }
-            svg.push_str("</svg>");
-            let dir = std::path::Path::new(&dir);
-            std::fs::create_dir_all(dir).unwrap();
-            std::fs::write(dir.join(format!("{name}.svg")), svg).unwrap();
-        }
+        export_visual(name, buffer);
     }
 }
 #[test]
@@ -247,4 +206,126 @@ fn focused_tree_survives_empty_refresh() {
     assert!(text.contains("parent (424241)"));
     key(&mut a, K::Char('k'));
     assert_eq!(a.pending[0].identity.pid, 424241);
+}
+
+/// Export rendered cell colors for optional visual review without changing fixtures.
+fn export_visual(name: &str, buffer: &ratatui::buffer::Buffer) {
+    use std::fmt::Write;
+    let width = buffer.area.width;
+    let height = buffer.area.height;
+    if let Some(dir) = std::env::var_os("OFLH_VISUAL_DIR") {
+        let mut svg = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\"><rect width=\"100%\" height=\"100%\" fill=\"#202028\"/>",
+            width * 9,
+            height * 18
+        );
+        for row in 0..height {
+            for column in 0..width {
+                let cell = &buffer[(column, row)];
+                let color = |c: ratatui::style::Color, default: &str| match c {
+                    ratatui::style::Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+                    ratatui::style::Color::DarkGray => "#74748a".into(),
+                    ratatui::style::Color::White => "#ffffff".into(),
+                    _ => default.into(),
+                };
+                let bg = color(cell.bg, "#202028");
+                let fg = color(cell.fg, "#b8b8cc");
+                if bg != "#202028" {
+                    write!(
+                        svg,
+                        "<rect x=\"{}\" y=\"{}\" width=\"9\" height=\"18\" fill=\"{bg}\"/>",
+                        column * 9,
+                        row * 18
+                    )
+                    .unwrap();
+                }
+                let symbol = cell
+                    .symbol()
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;");
+                if symbol != " " {
+                    write!(svg,"<text x=\"{}\" y=\"{}\" fill=\"{fg}\" font-family=\"DejaVu Sans Mono\" font-size=\"14\">{symbol}</text>",column * 9,row * 18+14).unwrap();
+                }
+            }
+        }
+        svg.push_str("</svg>");
+        let dir = std::path::Path::new(&dir);
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join(format!("{name}.svg")), svg).unwrap();
+    }
+}
+
+fn label_background(buffer: &ratatui::buffer::Buffer, label: &str) -> ratatui::style::Color {
+    let cells = buffer
+        .content
+        .windows(label.chars().count())
+        .rev()
+        .find(|cells| cells.iter().map(|cell| cell.symbol()).collect::<String>() == label)
+        .expect("button label is visible");
+    assert!(cells.iter().all(|cell| cell.bg == cells[0].bg));
+    cells[0].bg
+}
+
+#[test]
+fn confirmation_focus_has_distinct_backgrounds() {
+    use ratatui::{Terminal, backend::TestBackend, style::Color};
+    let mut application = app();
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal
+        .draw(|frame| view::draw(frame, &mut application))
+        .unwrap();
+    key(&mut application, K::Char('k'));
+    assert!(!application.confirm);
+    terminal
+        .draw(|frame| view::draw(frame, &mut application))
+        .unwrap();
+    let cancel_background = label_background(terminal.backend().buffer(), "Cancel");
+    assert_ne!(cancel_background, Color::Reset);
+    assert_eq!(
+        label_background(terminal.backend().buffer(), "Terminate"),
+        Color::Reset
+    );
+    export_visual("confirm-cancel", terminal.backend().buffer());
+    key(&mut application, K::Tab);
+    terminal
+        .draw(|frame| view::draw(frame, &mut application))
+        .unwrap();
+    let terminate_background = label_background(terminal.backend().buffer(), "Terminate");
+    assert_ne!(terminate_background, Color::Reset);
+    assert_ne!(terminate_background, cancel_background);
+    assert_eq!(
+        label_background(terminal.backend().buffer(), "Cancel"),
+        Color::Reset
+    );
+    export_visual("confirm-terminate", terminal.backend().buffer());
+}
+
+#[test]
+fn help_links_precede_warnings_and_open_with_shortcuts() {
+    let mut application = app();
+    application.snapshot.warnings = vec!["Permission restricted".into(); 30];
+    key(&mut application, K::Char('?'));
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+    terminal
+        .draw(|frame| view::draw(frame, &mut application))
+        .unwrap();
+    let text = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect::<String>();
+    assert!(text.contains("https://github.com/karimz1/open-file-lock-handle"));
+    assert!(text.contains("https://buymeacoffee.com/karimz1"));
+    assert!(matches!(
+        key(&mut application, K::Char('R')),
+        Effect::Link("https://github.com/karimz1/open-file-lock-handle")
+    ));
+    assert!(matches!(
+        key(&mut application, K::Char('D')),
+        Effect::Link("https://buymeacoffee.com/karimz1")
+    ));
+    export_visual("help-links", terminal.backend().buffer());
 }

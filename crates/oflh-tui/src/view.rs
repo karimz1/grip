@@ -123,36 +123,60 @@ fn search(frame: &mut Frame, area: Rect, app: &App, detail: bool) {
         ));
     }
 }
+/// Render distinct action colors with a pointer on the focused choice.
+fn confirmation_buttons(app: &App) -> Line<'static> {
+    let cancel_color = Color::Rgb(155, 197, 161);
+    let terminate_color = LOCK;
+    let button = |label: &str, focused: bool, color: Color| {
+        let style = if focused {
+            Style::default()
+                .fg(Color::Rgb(24, 24, 32))
+                .bg(color)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(color)
+        };
+        Span::styled(
+            format!("{} {label} ", if focused { "▶" } else { " " }),
+            style,
+        )
+    };
+    Line::from(vec![
+        button("Cancel", !app.confirm, cancel_color),
+        Span::raw("   "),
+        button(
+            if app.force { "Force kill" } else { "Terminate" },
+            app.confirm,
+            terminate_color,
+        ),
+    ])
+}
+
 fn footer_lines(width: u16, app: &App) -> Vec<Line<'static>> {
     let (keys, status) = match app.screen {
-        Screen::Confirm => (
-            if app.confirm {
-                "[ Cancel ]   [ TERMINATE ]   Tab choose · Enter confirm · Esc cancel"
-            } else {
-                "[ CANCEL ]   [ Terminate ]   Tab choose · Enter confirm · Esc cancel"
-            },
-            "",
-        ),
+        Screen::Confirm => ("Tab / ←→ choose · Enter confirm · Esc cancel", ""),
         Screen::Details => (
-            "/ search · l locks only · ↑↓ select · ←→ path · r refresh · a auto · k stop · x force · Esc back",
+            "/ search · l locks only · ↑↓ select · ←→ path · r refresh · a auto · k stop · x force · R GitHub · D Donate · Esc back",
             "",
         ),
-        Screen::Help => ("↑↓ scroll · R repository · D donate · Esc back", ""),
+        Screen::Help => ("↑↓ scroll · R GitHub · D Donate · Esc back", ""),
         Screen::Main if app.tree.is_some() => (
             "↑↓ process · k stop target · x force kill target · Tab/← back",
             "",
         ),
         _ => (
-            "1/2 tabs · / search · ↑↓ move · Enter inspect · Space select · Ctrl+A all · Tab/→ tree · i panel · m/c RAM/CPU · a auto · r refresh · k stop · x force · ? help · q quit",
+            "1/2 tabs · / search · ↑↓ move · Enter inspect · Space select · Ctrl+A all · Tab/→ tree · i panel · m/c RAM/CPU · a auto · r refresh · k stop · x force · ? help · R GitHub · D Donate · q quit",
             "Enter inspect · Space select · m RAM / c CPU / n name / p PID",
         ),
     };
     let keys = if width < 60 {
         match app.screen {
             Screen::Main if app.tree.is_none() => {
-                "1/2 tabs · / search · Enter inspect · k stop · x force · ? help · q quit"
+                "1/2 tabs · / search · Enter inspect · k stop · x force · ? help · R GitHub · D Donate · q quit"
             }
-            Screen::Details => "↑↓ select · / search · l locks · r refresh · Esc back",
+            Screen::Details => {
+                "↑↓ select · / search · l locks · r refresh · R GitHub · D Donate · Esc back"
+            }
             _ => keys,
         }
     } else {
@@ -177,6 +201,9 @@ fn footer_lines(width: u16, app: &App) -> Vec<Line<'static>> {
         "─".repeat(width as usize),
         Style::default().fg(MUTED),
     ));
+    if app.screen == Screen::Confirm {
+        lines.push(confirmation_buttons(app));
+    }
     // Wrap whole shortcut phrases to retain meaning at narrow widths.
     let mut row = String::new();
     for hint in keys.split(" · ") {
@@ -657,6 +684,7 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         accent(),
     );
     let Some(process) = app.detail() else {
+        let footer_height = (footer_lines(area.width, app).len() as u16).min(area.height);
         text(
             frame,
             Rect::new(area.x, area.y + 2, area.width, 3),
@@ -665,7 +693,12 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         );
         footer(
             frame,
-            Rect::new(area.x, area.bottom() - 3, area.width, 3),
+            Rect::new(
+                area.x,
+                area.bottom() - footer_height,
+                area.width,
+                footer_height,
+            ),
             app,
         );
         return;
@@ -922,14 +955,24 @@ fn dialog(frame: &mut Frame, area: Rect, app: &mut App) {
             )))
         }
     } else {
-        lines.push(Line::styled("SCAN DETAILS", accent()));
+        lines.push(Line::styled("LINKS", accent()));
+        lines.push(Line::raw(
+            "R  GitHub: https://github.com/karimz1/open-file-lock-handle",
+        ));
+        lines.push(Line::raw("D  Donate: https://buymeacoffee.com/karimz1"));
+        lines.push(Line::raw("Press uppercase R or D to open in your browser."));
+        lines.push(Line::raw(""));
+        if !app.snapshot.warnings.is_empty() {
+            lines.push(Line::styled("SCAN DETAILS", accent()));
+        }
         for warning in &app.snapshot.warnings {
             lines.push(Line::raw(safe(warning)))
         }
         lines.push(Line::raw(""));
         lines.extend(HELP.lines().map(|s| Line::raw(s.to_owned())));
     }
-    let height = area.height.saturating_sub(5);
+    let footer_height = (footer_lines(area.width, app).len() as u16).min(area.height);
+    let height = area.height.saturating_sub(footer_height + 2);
     app.page = height.max(1) as usize;
     app.scroll = app.scroll.min(lines.len().saturating_sub(1));
     frame.render_widget(
@@ -940,7 +983,12 @@ fn dialog(frame: &mut Frame, area: Rect, app: &mut App) {
     );
     footer(
         frame,
-        Rect::new(area.x, area.bottom() - 3, area.width, 3),
+        Rect::new(
+            area.x,
+            area.bottom() - footer_height,
+            area.width,
+            footer_height,
+        ),
         app,
     );
 }
@@ -986,9 +1034,7 @@ restart manager  Windows resource user, owner unverified
 unknown        OS did not expose this information
 
 CPU is a share of total machine capacity, sampled twice.
-Permissions, namespaces and races may limit visibility.
-Source: https://github.com/karimz1/open-file-lock-handle
-Support: https://buymeacoffee.com/karimz1";
+Permissions, namespaces and races may limit visibility.";
 
 fn locked_table(frame: &mut Frame, area: Rect, app: &App) {
     if app.rows.is_empty() {

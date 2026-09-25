@@ -17,4 +17,4 @@
 
   ────────────────────────────────────────────
   ↑↓ select · / search · l locks · r refresh
-  Esc back
+  R GitHub · D Donate · Esc back
