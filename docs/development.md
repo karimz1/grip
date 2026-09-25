@@ -45,7 +45,10 @@ A real PTY/ConPTY test exercises startup, input, resizing, and quit on each nati
 target. State tests cover confirmation and identity safety. Text golden snapshots
 cover process, lock, detail, and compact screens. Review intentional changes before
 updating them with `OFLH_UPDATE_SNAPSHOTS=1 cargo test -p oflh-tui golden_screens`.
-These checks do not establish identical rendering in every terminal emulator.
+For visual review, set `OFLH_VISUAL_DIR` to a temporary directory when running
+`cargo test -p oflh-tui`. The tests export SVG previews using sample data. Use
+these previews for documentation instead of captures containing real process
+names or private paths. Rendering can still vary between terminal emulators.
 
 Unit tests live in `#[cfg(test)]` modules; Cargo integration tests are separate
 executables. Release packaging builds only `oflh`, so test harnesses, C fixtures,
