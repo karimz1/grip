@@ -1,0 +1,20 @@
+  oflh / process details · ports
+  MANUAL · r refresh
+  dotnet · PID 424242
+  EXE /usr/bin/dotnet
+  CWD /build
+  ╭──────────────────────────────────────────╮
+  │/ Search port, process, address…          │
+  ╰──────────────────────────────────────────╯
+  3 of 3 bindings · f file usages
+   PORT  NET PID     PROCESS
+   3000  TCP 424242  dotnet
+   3000  TCP 424242  dotnet
+   5300  UDP 424242  dotnet
+
+
+  TCP 127.0.0.1:3000 · LISTEN
+
+  ────────────────────────────────────────────
+  / search · f files · r refresh · a auto
+  k stop · x force · ? help · Esc back

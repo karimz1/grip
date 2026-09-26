@@ -707,3 +707,32 @@ fn correlate(
     }
     Ok(())
 }
+
+pub(super) fn port_identity(pid: u32) -> Result<Identity> {
+    read_identity(pid)
+}
+
+pub(super) fn port_processes(cancel: &Cancellation) -> Result<Vec<Process>> {
+    let (handle, mut entry) = process_snapshot()?;
+    let mut processes = Vec::new();
+    // SAFETY: initialized structure size and live owned snapshot handle.
+    let mut next = unsafe { Process32FirstW(handle.0, &mut entry) };
+    while next != 0 {
+        cancel.check()?;
+        if let Ok(mut process) = read_process(entry.th32ProcessID) {
+            process.parent = entry.th32ParentProcessID;
+            processes.push(process);
+        }
+        // SAFETY: same live snapshot and correctly sized output record.
+        next = unsafe { Process32NextW(handle.0, &mut entry) };
+    }
+    // SAFETY: capture the enumeration result immediately after the final native call.
+    let code = unsafe { GetLastError() };
+    if code != ERROR_NO_MORE_FILES {
+        return Err(io(
+            "enumerate port owners",
+            std::io::Error::from_raw_os_error(code as i32),
+        ));
+    }
+    Ok(processes)
+}

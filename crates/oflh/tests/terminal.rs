@@ -7,6 +7,8 @@ use std::{
 };
 #[test]
 fn native_terminal_workflow() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("terminal-fixture ü.bin");
     let mut file = std::fs::File::create(&path).unwrap();
@@ -104,7 +106,19 @@ fn native_terminal_workflow() {
     wait("SCAN DETAILS");
     send(b"q");
     wait("Processes");
-    send(b"q");
+    send(format!("3/{port}\r").as_bytes());
+    wait("ALL PORTS");
+    wait(&std::process::id().to_string());
+    send(b"s");
+    wait("THIS PATH");
+    wait(&std::process::id().to_string());
+    send(b"\r");
+    wait("process details · ports");
+    send(b"a");
+    wait("LIVE");
+    send(b"f");
+    wait("ALL USAGES");
+    send(b"qq");
     let start = Instant::now();
     loop {
         if let Some(status) = child.try_wait().unwrap() {
@@ -132,6 +146,14 @@ fn cli_contract() {
         .output()
         .unwrap();
     assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("--port PORT"));
+    for port in ["0", "65536", "abc"] {
+        let invalid = std::process::Command::new(bin)
+            .args(["--port", port])
+            .output()
+            .unwrap();
+        assert_eq!(invalid.status.code(), Some(2));
+    }
     let bad = std::process::Command::new(bin)
         .args(["one", "two"])
         .output()

@@ -456,6 +456,40 @@ fn mapping(line: &[u8]) -> Option<(PathBuf, Access, u64, u64)> {
         ino,
     ))
 }
+pub(super) fn port_identity(pid: u32) -> Result<Identity> {
+    stat(pid).map(|stats| stats.identity)
+}
+
+pub(super) fn port_processes(cancel: &Cancellation) -> Result<Vec<Process>> {
+    let mut processes = Vec::new();
+    for entry in fs::read_dir("/proc").map_err(|error| io("enumerate port owners", error))? {
+        cancel.check()?;
+        let Ok(entry) = entry else { continue };
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let Ok(stats) = stat(pid) else { continue };
+        let base = entry.path();
+        processes.push(Process {
+            identity: stats.identity,
+            name: stats.name,
+            parent: stats.parent,
+            memory: stats.rss,
+            cwd: fs::read_link(base.join("cwd")).unwrap_or_default(),
+            executable: fs::read_link(base.join("exe")).unwrap_or_default(),
+            user: fs::metadata(&base)
+                .map(|metadata| metadata.uid().to_string())
+                .unwrap_or_else(|_| "unknown".into()),
+            ..Process::default()
+        });
+    }
+    Ok(processes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,0 +1,20 @@
+  oflh   1 Proc  2 Locks  3 Ports
+  /build  ·  MANUAL · r refresh
+  Navigation · / search · Tab/→ tree
+  ╭──────────────────────────────────────────╮
+  │/ Search port, process, address…          │
+  ╰──────────────────────────────────────────╯
+  5 bindings · ALL PORTS · s scope
+   PORT  NET PID     PROCESS
+   3000  TCP 424242  dotnet
+   3000  TCP 424242  dotnet
+   3000  TCP 424243  other-project
+   5300  UDP 424242  dotnet
+   9000  TCP —       owner unavailable
+
+
+
+  ────────────────────────────────────────────
+  1/2/3 tabs · / search · s all/this path
+  Enter inspect · Space select · r refresh
+  a auto · k stop · x force · ? help · q quit

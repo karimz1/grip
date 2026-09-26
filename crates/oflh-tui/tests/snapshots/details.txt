@@ -37,4 +37,4 @@
   /build/FileLockExampleCli.dll · POSIX WRITE
 
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  / search · l locks only · ↑↓ select · ←→ path · r refresh · a auto · k stop · x force · R GitHub · D Donate · Esc back
+  / search · f ports · l locks only · ↑↓ select · ←→ path · r refresh · a auto · k stop · x force · R GitHub · D Donate · Esc back

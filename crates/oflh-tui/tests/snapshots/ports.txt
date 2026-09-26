@@ -2,23 +2,21 @@
   /build  ·  MANUAL · r refresh
   Navigation · / search · Tab/→ tree
   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-  │/ Search PID, process, path… · * wildcard                                                                                                                 │
+  │/ Search port, process, address…                                                                                                                          │
   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-  1 of 1 processes · sort: pid
-     PID     PROCESS           USER        CPU%    RAM        ACCESS      MATCHED PATH                          dotnet · PID 424242
-     424242  dotnet            alice       2.4%    31.0 MiB   read/write  FileLockExampleCli.dll +2             ──────────────────────────────────────────────
-                                                                                                                CPU 2.4%   RAM 31.0 MiB
-                                                                                                                CPU = share of machine · RAM = RSS
-
-                                                                                                                ANCESTRY
+  5 bindings · ALL PORTS · s scope
+    PORT   PROTO PID      PROCESS           ADDRESS                                        STATE   THIS PATH    dotnet · PID 424242
+    3000   TCP   424242   dotnet            127.0.0.1                                      LISTEN  yes          ──────────────────────────────────────────────
+    3000   TCP   424242   dotnet            ::1                                            LISTEN  yes          CPU —   RAM —
+    3000   TCP   424243   other-project     127.0.0.1                                      LISTEN  —            CPU = share of machine · RAM = RSS
+    5300   UDP   424242   dotnet            127.0.0.1                                      BOUND   yes
+    9000   TCP   —        owner unavailable 0.0.0.0                                        LISTEN  —            ANCESTRY
                                                                                                                 └─ parent (424241)
                                                                                                                   └─ dotnet (424242)
 
                                                                                                                 EXECUTABLE
                                                                                                                 /usr/bin/dotnet
 
-                                                                                                                SELECTED PATH
-                                                                                                                /build/FileLockExampleCli.dll
 
 
 
@@ -34,7 +32,9 @@
 
 
 
-  Enter inspect · Space select · m RAM / c CPU / n name / p PID
+
+
+
+
   ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  1/2/3 tabs · / search · ↑↓ move · Enter inspect · Space select · Ctrl+A all · Tab/→ tree · i panel · m/c RAM/CPU · a auto · r refresh · k stop · x force
-  ? help · R GitHub · D Donate · q quit
+  1/2/3 tabs · / search · s all/this path · Enter inspect · Space select · r refresh · a auto · k stop · x force · ? help · q quit

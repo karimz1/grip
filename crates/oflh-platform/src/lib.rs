@@ -9,6 +9,8 @@ use std::time::Instant;
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(any(target_os = "linux", target_os = "macos", windows))]
+mod ports;
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]
@@ -92,5 +94,21 @@ fn apply_metrics(snapshot: &mut Snapshot, metrics: Vec<(Identity, Metrics)>) {
             process.memory = sample.memory;
             process.cpu = sample.cpu;
         }
+    }
+}
+
+/// Inspect local TCP listeners and UDP bindings using native APIs.
+/// Run on a worker thread; process ownership is checked against birth identities.
+pub fn scan_ports(cancel: &Cancellation) -> Result<Snapshot> {
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    {
+        ports::scan(cancel)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+    {
+        cancel.check()?;
+        Err(Error::Unavailable(
+            "port discovery is unavailable on this platform".into(),
+        ))
     }
 }

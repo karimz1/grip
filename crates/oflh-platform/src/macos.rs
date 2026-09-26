@@ -178,35 +178,7 @@ pub struct Native {
 impl Backend for Native {
     fn scan(&mut self, target: &Target, cancel: &Cancellation) -> Result<Snapshot> {
         cancel.check()?;
-        // SAFETY: null/zero requests a count only.
-        let count = unsafe { libc::proc_listallpids(std::ptr::null_mut(), 0) };
-        if count <= 0 {
-            return Err(io("enumerate processes", std::io::Error::last_os_error()));
-        }
-        let mut pids = vec![0i32; count as usize + 256];
-        loop {
-            cancel.check()?;
-            // SAFETY: initialized integer vector is writable for exactly the supplied byte size.
-            let returned = unsafe {
-                libc::proc_listallpids(
-                    pids.as_mut_ptr().cast(),
-                    (pids.len() * size_of::<i32>()) as i32,
-                )
-            };
-            if returned < 0 {
-                return Err(io("enumerate processes", std::io::Error::last_os_error()));
-            }
-            if (returned as usize) < pids.len() {
-                pids.truncate(returned as usize);
-                break;
-            }
-            if pids.len() > 1_000_000 {
-                return Err(Error::Unavailable(
-                    "process enumeration changed too quickly".into(),
-                ));
-            }
-            pids.resize(pids.len() * 2, 0);
-        }
+        let pids = process_ids(cancel)?;
         let mut snapshot = Snapshot {
             warnings: vec![
                 "macOS: first POSIX conflict per readable file; flock-only locks and additional ranges may be missed.".into(),
@@ -524,4 +496,59 @@ fn detect_locks(snapshot: &mut Snapshot, cancel: &Cancellation) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn process_ids(cancel: &Cancellation) -> Result<Vec<i32>> {
+    // SAFETY: null/zero requests a count only.
+    let count = unsafe { libc::proc_listallpids(std::ptr::null_mut(), 0) };
+    if count <= 0 {
+        return Err(io("enumerate processes", std::io::Error::last_os_error()));
+    }
+    let mut pids = vec![0i32; count as usize + 256];
+    loop {
+        cancel.check()?;
+        // SAFETY: initialized integer vector is writable for exactly the supplied byte size.
+        let returned = unsafe {
+            libc::proc_listallpids(
+                pids.as_mut_ptr().cast(),
+                (pids.len() * size_of::<i32>()) as i32,
+            )
+        };
+        if returned < 0 {
+            return Err(io("enumerate processes", std::io::Error::last_os_error()));
+        }
+        if (returned as usize) < pids.len() {
+            pids.truncate(returned as usize);
+            break;
+        }
+        if pids.len() > 1_000_000 {
+            return Err(Error::Unavailable(
+                "process enumeration changed too quickly".into(),
+            ));
+        }
+        pids.resize(pids.len() * 2, 0);
+    }
+    Ok(pids)
+}
+
+pub(super) fn port_identity(pid: u32) -> Result<Identity> {
+    read_identity(pid)
+}
+
+pub(super) fn port_processes(cancel: &Cancellation) -> Result<Vec<Process>> {
+    let mut processes = Vec::new();
+    for pid in process_ids(cancel)? {
+        cancel.check()?;
+        if pid <= 0 {
+            continue;
+        }
+        if let Ok((mut process, uid)) = read_process(pid as u32) {
+            process.user = uid.to_string();
+            if let Ok(cwd) = info::<libc::proc_vnodepathinfo>(pid as u32, 0) {
+                process.cwd = vnode_path(&cwd.pvi_cdir);
+            }
+            processes.push(process);
+        }
+    }
+    Ok(processes)
 }

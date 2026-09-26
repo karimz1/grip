@@ -29,12 +29,34 @@ impl Drop for TerminalGuard {
         ratatui::restore();
     }
 }
+/// Initial view requested by the CLI. Refresh and process actions remain interactive.
+#[derive(Clone, Debug, Default)]
+pub struct StartOptions {
+    /// Start in the Ports tab and collect network bindings.
+    pub ports: bool,
+    /// Restrict Ports to processes referencing the target path.
+    pub ports_path_only: bool,
+    /// Optional exact local port to search for at startup.
+    pub port: Option<u16>,
+}
+
 /// Run the interactive terminal with background scanning and RAII restoration.
-pub fn run(target: Target, version: String, backend: Box<dyn Backend>) -> std::io::Result<()> {
+pub fn run(
+    target: Target,
+    version: String,
+    backend: Box<dyn Backend>,
+    options: StartOptions,
+) -> std::io::Result<()> {
     let mut terminal = ratatui::try_init()?;
     let _guard = TerminalGuard;
     crossterm::execute!(std::io::stdout(), event::EnableBracketedPaste)?;
     let mut app = App::new(target, version);
+    app.ports = options.ports;
+    app.ports_requested = options.ports;
+    app.ports_path_only = options.ports_path_only;
+    app.port_query = options
+        .port
+        .map_or_else(String::new, |port| port.to_string());
     app.scanning = true;
     terminal.draw(|frame| view::draw(frame, &mut app))?;
     let (sender, receiver) = mpsc::sync_channel(128);
@@ -51,7 +73,7 @@ pub fn run(target: Target, version: String, backend: Box<dyn Backend>) -> std::i
             }
         })?;
     let mut generation = 1;
-    worker.request(generation, Work::Scan(app.target.clone()));
+    worker.request(generation, scan_work(&app));
     let mut pulse = Instant::now() + PULSE;
     let mut refresh = Instant::now() + REFRESH;
     let mut sample: Option<Instant> = None;
@@ -145,7 +167,7 @@ pub fn run(target: Target, version: String, backend: Box<dyn Backend>) -> std::i
                 sample = None;
                 sampling = false;
                 app.scanning = true;
-                worker.request(generation, Work::Scan(app.target.clone()));
+                worker.request(generation, scan_work(&app));
                 pulse = Instant::now() + PULSE;
                 dirty = true
             }
@@ -179,7 +201,7 @@ pub fn run(target: Target, version: String, backend: Box<dyn Backend>) -> std::i
                 generation += 1;
                 sample = None;
                 app.scanning = true;
-                worker.request(generation, Work::Scan(app.target.clone()));
+                worker.request(generation, scan_work(&app));
                 pulse = now + PULSE;
                 dirty = true
             }
@@ -231,5 +253,14 @@ fn open_link(url: &'static str) -> std::io::Result<()> {
     });
     Ok(())
 }
+
+fn scan_work(app: &App) -> Work {
+    if app.ports_requested {
+        Work::ScanPorts(app.target.clone())
+    } else {
+        Work::Scan(app.target.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests;

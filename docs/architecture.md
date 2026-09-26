@@ -27,6 +27,21 @@ A follow-up metrics request samples CPU and memory without repeating file discov
 Idle screens redraw only on changes. Search fields belong to a snapshot, queries
 are compiled when edited, and matching reuses scratch buffers.
 
+## Port discovery
+
+`oflh-platform::scan_ports` wraps `netstat2` native socket enumeration and captures
+process birth identities before enumeration, revalidating owners afterward. The
+worker merges port observations with target-matching file observations by full
+identity. Unknown owners use a zero identity and cannot become action targets.
+Port-only processes have no file usages, so they do not enter the file tables.
+
+Socket discovery is lazy: opening Ports or port details enables it for subsequent
+scans. It runs in the same bounded, cancellable worker and shares generation
+rejection, refresh scheduling, selection, and action confirmation. Native library
+calls cannot be interrupted internally; cancellation is checked between families,
+protocols, and returned entries. Port search indices are cached per snapshot;
+standalone numeric terms match the local port exactly.
+
 ## Process actions
 
 A process identity combines its PID with its birth time. Actions revalidate that

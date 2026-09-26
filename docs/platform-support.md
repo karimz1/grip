@@ -60,3 +60,32 @@ lightweight metrics sample runs about one second after the initial results;
 use `a` for regular updates. Unavailable metrics appear as a dash, for example when
 permissions or process exit prevent inspection.
 
+
+## Ports
+
+Ports are collected through `netstat2` using native OS APIs, without executing
+`lsof`, `ss`, or `netstat` and without connecting to services.
+
+| Platform | Socket discovery | Path association |
+| --- | --- | --- |
+| Linux | Netlink socket diagnostics; procfs for owner PIDs | Existing file, mapping, executable, and working-directory observations |
+| macOS | `libproc` socket descriptors | Existing file, mapping, executable, and working-directory observations |
+| Windows | IP Helper TCP/UDP owner tables | Existing Restart Manager, executable, and module observations; no working-directory inspection |
+
+TCP results include LISTEN sockets only, not established connections or TIME_WAIT
+entries. UDP results include bound local sockets, including client sockets;
+BOUND does not mean a listening TCP-style service. IPv4 and IPv6 are enumerated
+separately, so failure in one family does not discard the other's results.
+
+Ownership is joined only when the same PID and birth identity were observed
+before and after socket discovery. Missing, inaccessible, new, or changed owners
+appear as unavailable, with no actionable PID. Permissions can hide entire
+sockets on macOS. Linux discovery is limited to the current network namespace;
+run inside a container to inspect its namespace. Docker forwarding metadata is
+not queried. IPv6 interface scope identifiers are not exposed by the socket
+collector; addresses are informational, not ready-to-use connection commands.
+
+Path and socket scans are sequential snapshots. A process starting or changing
+its file references between them may not appear in THIS PATH until a refresh.
+Folder association remains subject to the file-discovery limits above. No result
+proves firewall access or reachability from another machine.

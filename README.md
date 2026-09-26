@@ -23,6 +23,7 @@ files. Start with a path to see which processes reference it and what they have 
 oflh ./build             # Find processes using files in a directory
 oflh ./build/plugin.dll  # Investigate a file or DLL in use
 oflh .                   # Inspect the current directory
+oflh --port 3000         # Find the process using a local port
 ```
 
 [Install](#installation) · [Quick start](#getting-started) ·
@@ -157,11 +158,35 @@ Use `?` for help. See the user guide for [search syntax](docs/usage.md#search),
 [process actions](docs/usage.md#process-actions), and the
 [full keyboard reference](docs/usage.md#keyboard-reference).
 
+## Find processes using ports
+
+Open **Ports** (`3`) to inspect local TCP listeners and bound UDP sockets. Search
+with `/` for an exact port number, process name, protocol, or address. Press `s`
+to switch between **ALL PORTS** and **THIS PATH**, which shows ports belonging to
+processes observed using the target file or directory.
+
+```sh
+oflh --ports             # All visible local port bindings
+oflh --port 3000         # Exact local port, TCP or UDP
+oflh --here .            # Ports of processes referencing this folder
+oflh --port 3000 --here . # Combine port and folder filters
+```
+
+`Enter` opens process port details; `f` switches between ports and file usages.
+Normal termination and force kill use the same confirmation and identity checks
+as file inspection. Unknown owners cannot be terminated. A bound port does not
+prove that it is reachable over the network.
+
+See [port search and scope](docs/usage.md#ports) for examples and
+[platform limitations](docs/platform-support.md#ports).
+
 ## Keyboard reference
 
 | Key | Action |
 | --- | --- |
-| `1` / `2` | Processes / Locked files |
+| `1` / `2` / `3` | Processes / Locked files / Ports |
+| `s` in Ports | Switch all ports / this path |
+| `f` in details | Switch file usages / ports |
 | `↑` / `↓` | Move through results |
 | `/` | Search |
 | `Enter` | Finish search editing / open process details |

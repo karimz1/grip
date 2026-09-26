@@ -5,6 +5,7 @@ use std::sync::{Arc, Condvar, Mutex, mpsc::SyncSender};
 /// Requests supported by the worker-owned scanner.
 pub enum Work {
     Scan(Target),
+    ScanPorts(Target),
     Sample(Vec<Identity>),
     Kill(Vec<Identity>, bool),
 }
@@ -73,6 +74,10 @@ impl Worker {
 fn execute_job(backend: &mut dyn Backend, job: Job) -> Event {
     match job.work {
         Work::Scan(target) => Event::Scan(job.generation, backend.scan(&target, &job.cancel)),
+        Work::ScanPorts(target) => Event::Scan(
+            job.generation,
+            scan_with_ports(backend, &target, &job.cancel),
+        ),
         Work::Sample(identities) => {
             Event::Metrics(job.generation, backend.sample(&identities, &job.cancel))
         }
@@ -103,6 +108,25 @@ impl Drop for Worker {
         state.job = None;
         ready.notify_one();
     }
+}
+
+fn scan_with_ports(
+    backend: &mut dyn Backend,
+    target: &Target,
+    cancel: &Cancellation,
+) -> Result<Snapshot> {
+    let mut snapshot = backend.scan(target, cancel)?;
+    match oflh_platform::scan_ports(cancel) {
+        Ok(ports) => {
+            snapshot.processes.extend(ports.processes);
+            snapshot.warnings.extend(ports.warnings);
+            snapshot.normalize();
+        }
+        Err(Error::Cancelled) => return Err(Error::Cancelled),
+        Err(error) => snapshot.warnings.push(format!("Port scan failed: {error}")),
+    }
+    cancel.check()?;
+    Ok(snapshot)
 }
 
 #[cfg(test)]

@@ -31,10 +31,49 @@ On wide terminals, the side panel shows the selected process, its ancestry,
 resource usage, and path details. Compact terminals retain resource and parent
 information in the process details view.
 
+## Ports
+
+Press `3` for **Ports**, or start directly with `oflh --ports`. The default is all
+visible local bindings. Press `s` to show only ports of processes associated with
+the target path, or start with `oflh --here .`. File and port search text are
+independent, so switching tabs does not mix their filters.
+
+| Query | Meaning |
+| --- | --- |
+| `3000` or `port:3000` | Exact local port; does not match `13000` or a PID |
+| `tcp 3000` | TCP listeners on port 3000 |
+| `udp` | Bound UDP sockets |
+| `ipv6` | IPv6 bindings |
+| `127.0.0.1` | Bindings matching that address |
+| `pid:424242` | Search the process ID explicitly |
+| `node 3000` | Both the process text and exact port must match |
+
+Port numbers must be between 1 and 65535. Other text uses the fragment and
+wildcard rules below. Each address/protocol/port binding has its own row; IPv4
+and IPv6 bindings remain separate. The initial order is by port number.
+
+**THIS PATH** means the process has an observed file, executable, mapping, or
+working-directory reference matching the target. It is an association, not proof
+that a particular project created the socket. Scope follows the original target,
+not the search text in the Processes tab. Windows cannot inspect working
+directories through the current backend; interpreted development servers may
+therefore appear only in ALL PORTS. See [platform coverage](platform-support.md#ports).
+
+`Enter` opens the selected process's ports; `f` switches to its target-matching
+file usages and back. `/` searches within details. `r` refreshes and `a` toggles
+five-second auto-refresh. Port details display LIVE or MANUAL mode.
+
+Socket discovery starts when you first open Ports or request port details, then
+runs with subsequent refreshes. An entry marked **owner unavailable** has no
+verified PID and cannot be terminated. Selecting multiple bindings of the same
+process produces one termination target. Selections survive scope and tab changes;
+confirmation includes hidden selections, as it does for file results.
+
 ## Search
 
 Search is case-insensitive and updates as you type. The same rules apply to
-Processes, Locked files, and process details.
+Processes, Locked files, and file-usage details. Ports use exact matching for
+numeric port terms as described above.
 
 | Query | Meaning |
 | --- | --- |
@@ -90,7 +129,9 @@ terminating a process may release the resources it holds.
 
 | Context | Key | Action |
 | --- | --- | --- |
-| Main view | `1` / `2` | Processes / Locked files |
+| Main view | `1` / `2` / `3` | Processes / Locked files / Ports |
+| Ports | `s` | All ports / this path |
+| Process details | `f` | File usages / ports |
 | Lists | `↑` / `↓` | Move selection |
 | Main view | `Enter` | Inspect process usages |
 | Main view or details | `/` | Start search |
@@ -113,7 +154,7 @@ terminating a process may release the resources it holds.
 | Navigation | `R` / `D` | Open repository / donation page in your default browser |
 | Navigation | `q` / `Ctrl+C` | Back / quit |
 
-Only `1` and `2` switch tabs. `Tab` changes table/tree focus or selects a dialog
+Only `1`, `2`, and `3` switch tabs. `Tab` changes table/tree focus or selects a dialog
 action. Selected **Cancel** has a green background; selected **Terminate** or
 **Force kill** has a red background. A pointer also identifies the choice, and
 Cancel remains the default. `R` and `D` open GitHub and Donate; Help shows both

@@ -24,13 +24,16 @@ validation command before submitting a pull request:
 ```sh
 cargo test -p oflh-core
 cargo test -p oflh-platform --test native
+cargo test -p oflh-platform --test ports
 cargo test -p oflh-tui
 cargo test -p oflh --test terminal
 cargo xtask check
 ```
 
 On Windows, run from a developer shell with the native compiler available. On
-macOS, install Xcode Command Line Tools. On Linux, install a C compiler and the
+macOS, install Xcode Command Line Tools, including the SDK and libclang needed
+by `netstat2` to generate its libproc bindings. Cross-checking macOS from Linux
+also requires an Apple SDK; installing the Rust target alone is insufficient. On Linux, install a C compiler and the
 usual linker/build tools from your distribution.
 
 ## Validation
