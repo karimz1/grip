@@ -12,6 +12,8 @@
 [![AwesomeTUI.com](https://img.shields.io/badge/AwesomeTUI.com-Listed-8A2BE2)](https://awesometui.com/open-file-lock-handle)
 [![Donate](https://img.shields.io/badge/Donate-Buy_Me_a_Coffee-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/karimz1)
 
+[![oflh | AlternativeTo](https://alternativeto.net/static/badges/badge-compact-dark.svg)](https://alternativeto.net/software/oflh-open-file-lock-handle/about/?utm_source=badge&utm_medium=referral)
+
 **Open File Lock Handle (`oflh`) is a native Rust terminal tool for finding which
 processes are using a file or directory on Windows, Linux, and macOS.** Inspect
 open file handles, mapped files, DLLs, and available lock evidence in one searchable
