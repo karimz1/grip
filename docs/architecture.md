@@ -35,8 +35,8 @@ worker merges port observations with target-matching file observations by full
 identity. Unknown owners use a zero identity and cannot become action targets.
 Port-only processes have no file usages, so they do not enter the file tables.
 
-Socket discovery is lazy: opening Ports or port details enables it for subsequent
-scans. It runs in the same bounded, cancellable worker and shares generation
+Socket discovery runs on the initial scan and subsequent refreshes so the
+Processes table and file details can show each process's ports. It runs in the same bounded, cancellable worker and shares generation
 rejection, refresh scheduling, selection, and action confirmation. Native library
 calls cannot be interrupted internally; cancellation is checked between families,
 protocols, and returned entries. Port search indices are cached per snapshot;

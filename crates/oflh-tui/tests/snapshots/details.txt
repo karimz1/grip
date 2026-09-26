@@ -4,6 +4,7 @@
   CWD /build
   PARENT parent (424241)
   CPU 2.4% machine · RAM 31.0 MiB RSS
+  PORTS · f inspect · none detected
   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
   │/ Search files, DLLs, paths… · * wildcard                                                                                                                 │
   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -14,7 +15,6 @@
   │FileLockExampleCli.dll                                 locked         read/write    /build                                                                │
   │FileLockExampleCli.deps.json                           open           unknown       /build                                                                │
   │other.dll                                              open           unknown       /build                                                                │
-  │                                                                                                                                                          │
   │                                                                                                                                                          │
   │                                                                                                                                                          │
   │                                                                                                                                                          │

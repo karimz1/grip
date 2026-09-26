@@ -183,7 +183,7 @@ fn footer_lines(width: u16, app: &App) -> Vec<Line<'static>> {
                 "1/2/3 tabs · / search · Enter inspect · k stop · x force · ? help · R GitHub · D Donate · q quit"
             }
             Screen::Details => {
-                "↑↓ select · / search · l locks · r refresh · R GitHub · D Donate · Esc back"
+                "↑↓ select · / search · f ports · l locks · r refresh · R GitHub · D Donate · Esc back"
             }
             _ => keys,
         }
@@ -507,8 +507,9 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
         .cursor
         .saturating_sub(count - 1)
         .min(app.rows.len().saturating_sub(count));
-    let wide = area.width >= 94;
-    let medium = area.width >= 62;
+    let wide = area.width >= 100;
+    let medium = area.width >= 68;
+    let show_ports = area.width >= 36;
     let widths = if wide {
         vec![
             Constraint::Length(3),
@@ -518,6 +519,7 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(8),
             Constraint::Length(11),
             Constraint::Length(12),
+            Constraint::Length(6),
             Constraint::Min(8),
         ]
     } else if medium {
@@ -526,6 +528,15 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(8),
             Constraint::Length(19),
             Constraint::Length(12),
+            Constraint::Length(6),
+            Constraint::Min(4),
+        ]
+    } else if show_ports {
+        vec![
+            Constraint::Length(3),
+            Constraint::Length(8),
+            Constraint::Percentage(35),
+            Constraint::Length(6),
             Constraint::Min(4),
         ]
     } else {
@@ -545,10 +556,13 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
             "CPU%",
             "RAM",
             "ACCESS",
+            "PORTS",
             "MATCHED PATH",
         ]
     } else if medium {
-        vec!["", "PID", "PROCESS", "ACCESS", "MATCHED PATH"]
+        vec!["", "PID", "PROCESS", "ACCESS", "PORTS", "MATCHED PATH"]
+    } else if show_ports {
+        vec!["", "PID", "PROCESS", "PORTS", "PATH"]
     } else {
         vec!["", "PID", "PROCESS", "PATH"]
     };
@@ -602,6 +616,17 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
                 ),
             )
         }
+        if show_ports {
+            cells.push(
+                Cell::from(process.ports.len().to_string()).style(Style::default().fg(
+                    if process.ports.is_empty() {
+                        MUTED
+                    } else {
+                        ACCENT
+                    },
+                )),
+            );
+        }
         cells.push(Cell::from(path));
         TableRow::new(cells)
     });
@@ -612,6 +637,27 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
     let mut state = TableState::default().with_selected(Some(app.cursor - start));
     frame.render_stateful_widget(table, area, &mut state);
 }
+fn process_port_summary(process: &Process) -> String {
+    let ports: std::collections::BTreeSet<_> = process
+        .ports
+        .iter()
+        .map(|port| (port.protocol, port.number))
+        .collect();
+    if ports.is_empty() {
+        return "none detected".into();
+    }
+    let mut summary = ports
+        .iter()
+        .take(3)
+        .map(|(protocol, number)| format!("{} {number}", protocol.label()))
+        .collect::<Vec<_>>()
+        .join(" · ");
+    if ports.len() > 3 {
+        summary.push_str(&format!(" · +{} more", ports.len() - 3));
+    }
+    summary
+}
+
 fn inspector(frame: &mut Frame, area: Rect, app: &App) {
     let captured;
     let process = if let Some(tree) = &app.tree {
@@ -712,6 +758,9 @@ fn inspector(frame: &mut Frame, area: Rect, app: &App) {
     }
     lines.extend([
         Line::raw(""),
+        Line::styled("PORTS · Enter details, f ports", accent()),
+        Line::raw(process_port_summary(process)),
+        Line::raw(""),
         Line::styled("EXECUTABLE", accent()),
         Line::raw(safe(&process.executable.to_string_lossy())),
     ]);
@@ -788,7 +837,7 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         )),
     ];
     let compact = area.height < 24;
-    let head_height = if compact { 3 } else { 6 };
+    let head_height = if compact { 4 } else { 7 };
     if compact {
         let lines = vec![
             header[0].clone(),
@@ -809,6 +858,12 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
             Rect::new(area.x, area.y + 1, area.width, 5),
         );
     }
+    text(
+        frame,
+        line_area(area, head_height - 1),
+        format!("PORTS · f inspect · {}", process_port_summary(process)),
+        accent(),
+    );
     search(
         frame,
         Rect::new(area.x, area.y + head_height, area.width, 3),

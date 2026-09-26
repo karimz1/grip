@@ -14,11 +14,11 @@
                                                                                                                 └─ parent (424241)
                                                                                                                   └─ dotnet (424242)
 
+                                                                                                                PORTS · Enter details, f ports
+                                                                                                                TCP 3000 · UDP 5300
+
                                                                                                                 EXECUTABLE
                                                                                                                 /usr/bin/dotnet
-
-
-
 
 
 

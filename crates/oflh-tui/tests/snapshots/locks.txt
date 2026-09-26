@@ -14,14 +14,14 @@
                                                                                 └─ parent (424241)
                                                                                   └─ dotnet (424242)
 
+                                                                                PORTS · Enter details, f ports
+                                                                                none detected
+
                                                                                 EXECUTABLE
                                                                                 /usr/bin/dotnet
 
                                                                                 SELECTED PATH
                                                                                 /build/FileLockExampleCli.dll
-
-
-
 
 
   Enter inspect · Space select · m RAM / c CPU / n name / p PID

@@ -5,8 +5,8 @@
   │/ Search PID, process, path… · * wildcard                                                                                                                 │
   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
   1 of 1 processes · sort: pid
-     PID     PROCESS           USER        CPU%    RAM        ACCESS      MATCHED PATH                          dotnet · PID 424242
-     424242  dotnet            alice       2.4%    31.0 MiB   read/write  FileLockExampleCli.dll +2             ──────────────────────────────────────────────
+     PID     PROCESS           USER        CPU%    RAM        ACCESS      PORTS MATCHED PATH                    dotnet · PID 424242
+     424242  dotnet            alice       2.4%    31.0 MiB   read/write  0     FileLockExampleCli.dll +2       ──────────────────────────────────────────────
                                                                                                                 CPU 2.4%   RAM 31.0 MiB
                                                                                                                 CPU = share of machine · RAM = RSS
 
@@ -14,14 +14,14 @@
                                                                                                                 └─ parent (424241)
                                                                                                                   └─ dotnet (424242)
 
+                                                                                                                PORTS · Enter details, f ports
+                                                                                                                none detected
+
                                                                                                                 EXECUTABLE
                                                                                                                 /usr/bin/dotnet
 
                                                                                                                 SELECTED PATH
                                                                                                                 /build/FileLockExampleCli.dll
-
-
-
 
 
 

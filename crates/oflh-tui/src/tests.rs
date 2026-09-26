@@ -506,3 +506,65 @@ fn check_port_snapshot(name: &str, buffer: &ratatui::buffer::Buffer) {
     }
     assert_eq!(std::fs::read_to_string(path).unwrap(), text, "{name}");
 }
+
+#[test]
+fn process_rows_and_file_details_expose_ports_without_visiting_ports_tab() {
+    for width in [48, 80, 160] {
+        let mut application = ports_app();
+        application.ports_requested = true;
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, 30)).unwrap();
+        terminal
+            .draw(|frame| view::draw(frame, &mut application))
+            .unwrap();
+        let lines: Vec<String> = terminal
+            .backend()
+            .buffer()
+            .content
+            .chunks(width as usize)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect())
+            .collect();
+        let column = lines[7]
+            .find("PORTS")
+            .expect("process table exposes port bindings");
+        assert_eq!(
+            terminal.backend().buffer()[(column as u16, 8)].symbol(),
+            "3"
+        );
+        key(&mut application, K::Enter);
+        terminal
+            .draw(|frame| view::draw(frame, &mut application))
+            .unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("TCP 3000"));
+        assert!(text.contains("UDP 5300"));
+        assert!(!application.detail_ports);
+        if width == 160 {
+            export_visual("file-details-with-ports", terminal.backend().buffer());
+        }
+        key(&mut application, K::Char('f'));
+        assert!(application.detail_ports);
+        assert_eq!(application.usage_rows.len(), 3);
+        key(&mut application, K::Char('f'));
+        let mut snapshot = application.snapshot.clone();
+        snapshot.processes[0].ports.clear();
+        application.replace(snapshot);
+        terminal
+            .draw(|frame| view::draw(frame, &mut application))
+            .unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("none detected"));
+    }
+}

@@ -87,6 +87,7 @@ fn native_terminal_workflow() {
     wait("1 of");
     send(b"\r");
     wait("process details");
+    wait(&format!("TCP {port}"));
     send(b"l");
     wait("LOCKS ONLY");
     send(b"l");

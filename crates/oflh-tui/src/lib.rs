@@ -52,7 +52,7 @@ pub fn run(
     crossterm::execute!(std::io::stdout(), event::EnableBracketedPaste)?;
     let mut app = App::new(target, version);
     app.ports = options.ports;
-    app.ports_requested = options.ports;
+    app.ports_requested = true;
     app.ports_path_only = options.ports_path_only;
     app.port_query = options
         .port

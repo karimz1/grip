@@ -63,8 +63,11 @@ therefore appear only in ALL PORTS. See [platform coverage](platform-support.md#
 file usages and back. `/` searches within details. `r` refreshes and `a` toggles
 five-second auto-refresh. Port details display LIVE or MANUAL mode.
 
-Socket discovery starts when you first open Ports or request port details, then
-runs with subsequent refreshes. An entry marked **owner unavailable** has no
+Socket discovery runs with the initial scan and subsequent refreshes. The Processes
+view shows a PORTS binding count; the side panel and file details preview distinct
+protocol/port pairs. IPv4 and IPv6 bindings count separately in the table. Press
+Enter, then `f`, to inspect all addresses. Counts describe the whole process,
+independent of the file search filter. Zero means none detected, not proof of absence. An entry marked **owner unavailable** has no
 verified PID and cannot be terminated. Selecting multiple bindings of the same
 process produces one termination target. Selections survive scope and tab changes;
 confirmation includes hidden selections, as it does for file results.
