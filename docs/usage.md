@@ -19,8 +19,17 @@ oflh "/path/with spaces"       # Quote paths containing spaces
 4. Use **Locked files** (`2`) to narrow the list to files with lock or sharing-conflict evidence.
 5. Press `r` to rescan, or `a` to enable five-second auto-refresh.
 
+The **LOCKS** column counts distinct paths with lock or sharing-conflict evidence
+among each process's filtered usages. Multiple lock entries for one path count
+once. `0` means no evidence was detected in those results, not proof that no lock
+exists. On Windows, the reported process's ownership remains unverified. Positive
+counts use muted red. Very narrow terminals retain the count and omit the path
+column; press `Enter` to inspect file usages.
+
 In process details, `r` refreshes file usages and metrics; `a` toggles the same
-auto-refresh used by the main view. Search and lock filters remain active.
+auto-refresh used by the main view. Both views show **MANUAL · r refresh** or
+**LIVE · every 5s**, including while a scan is running. Search and lock filters
+remain active.
 
 In process details, `l` toggles **Locks only** without clearing the search. The
 summary counts distinct locked paths among the displayed usages. Lock labels

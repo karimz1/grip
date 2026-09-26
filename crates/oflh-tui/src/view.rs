@@ -175,7 +175,7 @@ fn footer_lines(width: u16, app: &App) -> Vec<Line<'static>> {
                 "1/2 tabs · / search · Enter inspect · k stop · x force · ? help · R GitHub · D Donate · q quit"
             }
             Screen::Details => {
-                "↑↓ select · / search · l locks · r refresh · R GitHub · D Donate · Esc back"
+                "↑↓ select · / search · l locks · r refresh · a auto · R GitHub · D Donate · Esc back"
             }
             _ => keys,
         }
@@ -273,6 +273,21 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::Help | Screen::Confirm => dialog(frame, area, app),
     }
 }
+fn refresh_status(app: &App) -> String {
+    let mode = if app.auto {
+        "LIVE · every 5s"
+    } else {
+        "MANUAL · r refresh"
+    };
+    if app.stopping {
+        format!("{mode} · requesting termination…")
+    } else if app.scanning {
+        format!("{mode} · {} scanning", ["◐", "◓", "◑", "◒"][app.pulse % 4])
+    } else {
+        mode.into()
+    }
+}
+
 fn main_view(frame: &mut Frame, area: Rect, app: &mut App) {
     let tabs = vec![
         Span::styled("oflh  ", accent()),
@@ -319,20 +334,12 @@ fn main_view(frame: &mut Frame, area: Rect, app: &mut App) {
             Style::default().fg(MUTED),
         );
     }
-    let activity = if app.stopping {
-        "requesting termination…".to_owned()
-    } else if app.scanning {
-        format!("{} scanning", ["◐", "◓", "◑", "◒"][app.pulse % 4])
-    } else if app.auto {
-        "LIVE · every 5s".into()
-    } else {
-        "MANUAL · r refresh".into()
-    };
     text(
         frame,
         line_area(area, 1),
         format!(
-            "{}  ·  {activity}",
+            "{}  ·  {}",
+            refresh_status(app),
             safe(&app.target.path.to_string_lossy())
         ),
         Style::default().fg(MUTED),
@@ -459,8 +466,9 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
         .cursor
         .saturating_sub(count - 1)
         .min(app.rows.len().saturating_sub(count));
-    let wide = area.width >= 94;
-    let medium = area.width >= 62;
+    let wide = area.width >= 100;
+    let medium = area.width >= 68;
+    let show_path = area.width >= 36;
     let widths = if wide {
         vec![
             Constraint::Length(3),
@@ -470,6 +478,7 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(8),
             Constraint::Length(11),
             Constraint::Length(12),
+            Constraint::Length(6),
             Constraint::Min(8),
         ]
     } else if medium {
@@ -478,14 +487,23 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(8),
             Constraint::Length(19),
             Constraint::Length(12),
+            Constraint::Length(6),
+            Constraint::Min(4),
+        ]
+    } else if show_path {
+        vec![
+            Constraint::Length(3),
+            Constraint::Length(8),
+            Constraint::Percentage(35),
+            Constraint::Length(6),
             Constraint::Min(4),
         ]
     } else {
         vec![
-            Constraint::Length(3),
-            Constraint::Length(8),
-            Constraint::Percentage(40),
+            Constraint::Length(2),
+            Constraint::Length(7),
             Constraint::Min(4),
+            Constraint::Length(6),
         ]
     };
     let headers = if wide {
@@ -497,12 +515,15 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
             "CPU%",
             "RAM",
             "ACCESS",
+            "LOCKS",
             "MATCHED PATH",
         ]
     } else if medium {
-        vec!["", "PID", "PROCESS", "ACCESS", "MATCHED PATH"]
+        vec!["", "PID", "PROCESS", "ACCESS", "LOCKS", "MATCHED PATH"]
+    } else if show_path {
+        vec!["", "PID", "PROCESS", "LOCKS", "PATH"]
     } else {
-        vec!["", "PID", "PROCESS", "PATH"]
+        vec!["", "PID", "PROCESS", "LOCKS"]
     };
     let rows = app.rows.iter().skip(start).take(count).map(|row| {
         let process = &app.snapshot.processes[row.process];
@@ -554,7 +575,13 @@ fn render_main_table(frame: &mut Frame, area: Rect, app: &App) {
                 ),
             )
         }
-        cells.push(Cell::from(path));
+        cells.push(
+            Cell::from(row.locked_paths.to_string())
+                .style(Style::default().fg(if row.locked_paths > 0 { LOCK } else { MUTED })),
+        );
+        if show_path {
+            cells.push(Cell::from(path));
+        }
         TableRow::new(cells)
     });
     let table = Table::new(rows, widths)
@@ -683,11 +710,17 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         "oflh  /  process details",
         accent(),
     );
+    text(
+        frame,
+        line_area(area, 1),
+        refresh_status(app),
+        Style::default().fg(MUTED),
+    );
     let Some(process) = app.detail() else {
         let footer_height = (footer_lines(area.width, app).len() as u16).min(area.height);
         text(
             frame,
-            Rect::new(area.x, area.y + 2, area.width, 3),
+            Rect::new(area.x, area.y + 3, area.width, 3),
             "Process exited or PID was reused. Press Esc to return.",
             Style::default().fg(LOCK),
         );
@@ -732,7 +765,7 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         )),
     ];
     let compact = area.height < 24;
-    let head_height = if compact { 3 } else { 6 };
+    let head_height = if compact { 4 } else { 7 };
     if compact {
         let lines = vec![
             header[0].clone(),
@@ -745,12 +778,12 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         ];
         frame.render_widget(
             Paragraph::new(lines),
-            Rect::new(area.x, area.y + 1, area.width, 2),
+            Rect::new(area.x, area.y + 2, area.width, 2),
         );
     } else {
         frame.render_widget(
             Paragraph::new(header),
-            Rect::new(area.x, area.y + 1, area.width, 5),
+            Rect::new(area.x, area.y + 2, area.width, 5),
         );
     }
     search(
@@ -759,17 +792,7 @@ fn details(frame: &mut Frame, area: Rect, app: &mut App) {
         app,
         true,
     );
-    let locked = app
-        .usage_rows
-        .iter()
-        .filter_map(|&i| {
-            process.usages[i]
-                .lock
-                .as_ref()
-                .map(|_| &process.usages[i].path)
-        })
-        .collect::<std::collections::HashSet<_>>()
-        .len();
+    let locked = locked_path_count(process, &app.usage_rows);
     text(
         frame,
         line_area(area, head_height + 3),
@@ -1025,6 +1048,9 @@ Stopping a parent does not recursively terminate its children.
 
 READING THE EVIDENCE
 An open file is not necessarily locked.
+LOCKS counts distinct paths with evidence in filtered results.
+0 means none detected; reported Windows owners remain unverified.
+MANUAL / LIVE shows refresh mode in the main and details views.
 locked         Platform lock / sharing-conflict evidence
 open           Observed file descriptor
 cwd            Current working directory

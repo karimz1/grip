@@ -24,6 +24,8 @@ pub enum Sort {
 pub struct Row {
     pub process: usize,
     pub usages: Vec<usize>,
+    /// Distinct native paths with lock evidence among the filtered usages.
+    pub locked_paths: usize,
     score: u32,
 }
 #[derive(Clone, Debug)]
@@ -235,6 +237,7 @@ impl App {
                         self.rows.push(Row {
                             process: i,
                             usages: vec![j],
+                            locked_paths: 1,
                             score,
                         })
                     }
@@ -250,6 +253,7 @@ impl App {
                 if !usages.is_empty() {
                     self.rows.push(Row {
                         process: i,
+                        locked_paths: locked_path_count(process, &usages),
                         usages,
                         score: index.score(&query, &mut scratch),
                     })
@@ -723,4 +727,17 @@ impl App {
         }
         Effect::None
     }
+}
+
+/// Count paths with detected lock evidence, not lock entries or proven owners.
+/// Compare native paths before display sanitization so distinct files stay distinct.
+pub(crate) fn locked_path_count(process: &Process, usages: &[usize]) -> usize {
+    usages
+        .iter()
+        .filter_map(|&index| {
+            let usage = &process.usages[index];
+            usage.lock.as_ref().map(|_| &usage.path)
+        })
+        .collect::<HashSet<_>>()
+        .len()
 }
