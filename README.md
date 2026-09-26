@@ -1,45 +1,62 @@
 <p align="center">
-  <img src="images/oflh-logo.svg" alt="oflh — Open File Lock Handle, built with Rust" width="760">
+  <img src="images/oflh-logo.svg" alt="Open File Lock Handle (oflh)" width="760">
 </p>
 
-# oflh — Find locked files and the processes using them
+<a id="oflh--find-locked-files-and-the-processes-using-them"></a>
+
+# oflh — Find which process is using a file
 
 [![GitHub Downloads](https://img.shields.io/github/downloads/karimz1/open-file-lock-handle/total.svg)](https://github.com/karimz1/open-file-lock-handle/releases)
-[![Rust](https://img.shields.io/badge/Built_with-Rust-b7410e?logo=rust&logoColor=white)](#performance)
 [![CI](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml/badge.svg)](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml)
-[![Platforms](https://img.shields.io/badge/Platforms-Linux_%C2%B7_macOS_%C2%B7_Windows-6d28d9)](#platform-behavior)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![AwesomeTUI.com](https://img.shields.io/badge/AwesomeTUI.com-Listed-8A2BE2)](https://awesometui.com/open-file-lock-handle)
-[![Donate](https://img.shields.io/badge/Donate-Buy_Me_a_Coffee-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/karimz1)
 
-[![oflh | AlternativeTo](https://alternativeto.net/static/badges/badge-compact-dark.svg)](https://alternativeto.net/software/oflh-open-file-lock-handle/about/?utm_source=badge&utm_medium=referral)
-
-**Open File Lock Handle (`oflh`) is a native Rust terminal tool for finding which
-processes are using a file or directory on Windows, Linux, and macOS.** Inspect
-open file handles, mapped files, DLLs, and available lock evidence in one searchable
-interface, then request process termination when needed.
-
-<a href="images/demo.gif">
-  <img src="images/demo.gif" alt="Open File Lock Handle terminal UI: searchable processes, open files, access modes, and ancestry" width="100%">
-</a>
-
-For a higher-quality preview, watch the [terminal recording on asciinema](https://asciinema.org/a/HVwfkoVJfOi5ckDa).
-
-UI preview with sample processes and paths.
-
-Use it to investigate **“file in use by another process”**, a build that cannot
-replace a DLL, or a directory held open by a background application.
+**Open File Lock Handle (`oflh`) finds processes using a file or directory on
+Windows, Linux, and macOS.** It is a command-line tool with an interactive
+terminal UI (TUI) for investigating locked files, open file handles, and mapped
+files. Start with a path to see which processes reference it and what they have open.
 
 ```sh
-oflh ./build             # Find processes using a directory
-oflh ./build/plugin.dll  # Investigate a specific file or DLL
+oflh ./build             # Find processes using files in a directory
+oflh ./build/plugin.dll  # Investigate a file or DLL in use
 oflh .                   # Inspect the current directory
 ```
 
-**Start here:** [Install](#installation) · [Quick start](#getting-started) ·
-[Go vs Rust performance](#performance) · [Keyboard shortcuts](#keyboard-reference) ·
-[Platform coverage](#platform-behavior) · [Report a bug](https://github.com/karimz1/open-file-lock-handle/issues) ·
-[Donate](https://buymeacoffee.com/karimz1)
+[Install](#installation) · [Quick start](#getting-started) ·
+[Keyboard shortcuts](#keyboard-reference) · [Platform support](#platform-behavior) ·
+[User guide](docs/usage.md)
+
+<a href="images/demo.gif">
+  <img src="images/demo.gif" alt="oflh terminal UI showing processes using a target path, file access modes, and process ancestry" width="100%">
+</a>
+
+Demo with sample processes and paths.
+[Watch the terminal recording](https://asciinema.org/a/HVwfkoVJfOi5ckDa).
+
+## When to use oflh
+
+- **A file is “in use by another process.”** Find processes referencing it before retrying a rename, move, or delete.
+- **A build cannot replace a DLL or executable.** Inspect the output directory to find a running application or development tool still using its files.
+- **You want to clean up a directory.** See which visible processes reference files beneath it, then inspect their file usages and parent processes.
+- **You are troubleshooting a file lock.** Switch to the Locked files view to examine the lock or sharing-conflict evidence available on your OS.
+
+An open file is **not necessarily locked**. `oflh` separates file usage from lock
+evidence and does not directly unlock files. Stopping a process may release its
+resources; it can also interrupt work in that application.
+
+<a id="what-makes-it-different"></a>
+
+## Why oflh?
+
+Use it alongside `lsof`, `fuser`, or Task Manager when you want to start with a
+path and investigate interactively, without knowing a process name or PID.
+
+- **Search quickly:** filter process names and file paths with fragments, CamelCase abbreviations, and wildcards.
+- **Inspect the context:** view individual file usages, access modes, parent processes, CPU, and memory.
+- **Follow changes:** sort results, rescan on demand, or enable five-second auto-refresh.
+- **Act from the same interface:** request termination with confirmation and process identity checks.
+
+Written in Rust, `oflh` uses native OS interfaces. See [platform behavior](#platform-behavior)
+for discovery coverage and lock-detection limits.
 
 ## Installation
 
@@ -60,18 +77,33 @@ brew upgrade oflh
 
 ### Standalone binaries
 
-Download the executable for your platform from
-[GitHub Releases](https://github.com/karimz1/open-file-lock-handle/releases).
+Download the executable for your operating system and CPU from the
+[latest release](https://github.com/karimz1/open-file-lock-handle/releases/latest):
 
-| Platform | Architectures |
-| --- | --- |
-| Linux | x86-64, ARM64 |
-| macOS | Intel, Apple Silicon |
-| Windows | x86-64, ARM64 |
+| Platform | x86-64 (Intel / AMD) | ARM64 |
+| --- | --- | --- |
+| Linux | `oflh-linux-amd64` | `oflh-linux-arm64` |
+| macOS | `oflh-darwin-amd64` | `oflh-darwin-arm64` (Apple Silicon) |
+| Windows | `oflh-windows-amd64.exe` | `oflh-windows-arm64.exe` |
 
-On Windows, rename the executable to `oflh.exe` and place it in a directory on
-`PATH`. On Linux and macOS, rename it to `oflh`, run `chmod +x oflh`, and place it
-in a directory on `PATH`.
+Open a terminal in the download folder. On **Linux or macOS**, rename the downloaded
+file to `oflh`, then make it executable and run it against the folder you want to inspect:
+
+```sh
+chmod +x ./oflh
+./oflh "/path/to/project"
+```
+
+On **Windows**, rename the downloaded file to `oflh.exe` and run it in PowerShell:
+
+```powershell
+.\oflh.exe "C:\projects\example"
+```
+
+You can run it this way without changing `PATH`. To use the shorter `oflh` command
+from any folder, put the executable in a directory listed in your `PATH` environment
+variable. Otherwise, keep using its full path or `./oflh` (`.\oflh.exe` in PowerShell)
+from the download folder.
 
 Releases include `checksums.txt` for SHA-256 verification.
 
@@ -93,283 +125,128 @@ cargo build --release --locked --bin oflh
 
 ## Getting started
 
-Run `oflh` in an interactive terminal:
+Run `oflh [PATH]` in an interactive terminal. With no path, it inspects the current
+directory. A directory target includes its descendants.
 
 ```sh
-oflh                          # Current directory
-oflh ./build                  # Directory and its descendants
-oflh ./build/plugin.dll       # One file
-oflh "/path/with spaces"      # Quote paths containing spaces
+oflh
+oflh "/path/with spaces"
+oflh --help
+oflh --version
 ```
 
-1. Use **Processes** (`1`) to see processes referencing the target path.
-2. Press `/` to search, then `Enter` to finish typing.
-3. Press `Enter` on a process to inspect its individual file usages.
-4. Use **Locked files** (`2`) to narrow the list to files with lock or sharing-conflict evidence.
-5. Press `r` to rescan, or `a` to enable five-second auto-refresh.
+Windows PowerShell example:
 
-In process details, `r` refreshes file usages and metrics; `a` toggles the same
-auto-refresh used by the main view. Search and lock filters remain active.
+```powershell
+oflh "C:\projects\example\build\plugin.dll"
+```
 
-In process details, `l` toggles **Locks only** without clearing the search. The
-summary counts distinct locked paths among the displayed usages. Lock labels
-appear in muted red. The selected filename appears above the table, and its full
-path appears below it. Use `←` and `→` to page through a long path.
+1. Open a file or directory with `oflh` and select a process in **Processes** (`1`).
+2. Press `/` to search and `Enter` to finish typing. For example, `dll` finds a fragment; `micro*dll` matches chunks in order.
+3. Press `Enter` on a process to inspect its file usages, or `2` to open **Locked files**.
+4. Close the application normally if possible. If needed, `k` requests termination and `x` requests force kill; both require confirmation.
+5. Press `r` to rescan and check whether the file is still in use.
 
-On wide terminals, the side panel shows the selected process, its ancestry,
-resource usage, and path details. Compact terminals retain resource and parent
-information in the process details view.
+<a id="search"></a>
 
-### Terminal recommendation
-
-For the best visual experience, use a terminal with true-color and Unicode
-support, with enough width for the process table and side panel. I recommend
-[Ghostty](https://ghostty.org/docs) on macOS and Linux. This is a personal
-recommendation; I am not affiliated with the project. Ghostty is optional, and
-`oflh` does not depend on a particular terminal emulator.
-
-## Performance
-
-Starting with v0.1.0, `oflh` uses Rust for the application and release tooling. The UI uses Ratatui; scanners call native OS interfaces.
-Background scans keep input responsive, resource sampling avoids a second file
-scan, and compiled search fields reuse matching buffers. Tests and developer tools
-are excluded from the distributed executable.
-
-Measured against the preceding Go implementation on the **same Linux x86-64
-workstation and fixture**:
-
-| Operation | Go | Rust |
-| --- | ---: | ---: |
-| First terminal frame, median | 42.5 ms | **1.7 ms** |
-| Directory scan, median | 218.8 ms | **100.6 ms** |
-| Directory scan, p95 | 227.8 ms | **114.7 ms** |
-| Single-file scan, median | 218.4 ms | **96.8 ms** |
-| Missing-file scan, median | 208.9 ms | **108.0 ms** |
-| TUI memory after startup, median | 16,840 KiB | **4,436 KiB** |
-| Stripped executable size | 4.32 MiB | **1.04 MiB** |
-
-Thirty warm scans per target and five startup runs; 512 open handles, 64 mappings,
-and 16 locks. Both scanners produced identical observation rows for this fixture.
-Results depend on the workload and machine. This comparison covers Linux;
-Windows and macOS timings are not included. See the [methodology, raw results, and limitations](docs/performance.md).
-
-## Why oflh?
-
-A build cannot replace a DLL. A file reports "in use by another process." A
-background application still references a directory you want to clean up.
-The useful starting point is often a path, rather than a process name or PID.
-
-`oflh` follows that workflow: choose the file or directory, find its users,
-inspect the evidence, and decide whether to stop a process or its parent. It
-brings file-handle inspection and process control into one keyboard-driven
-interface, with searchable results and a separate view for locked files.
-
-It is useful alongside tools such as `lsof`, `fuser`, and Task Manager. It does
-not bypass operating-system permissions or guarantee that every file lock is
-visible. See [Platform behavior](#platform-behavior) for the detection scope.
-
-### What makes it different
-
-`oflh` is path-first. Run `oflh .` on a folder and get a searchable view of visible
-processes using it, including process ancestry and the files each process has open,
-mapped, or locked.
-
-From the same TUI you can inspect detailed file usage, switch to a dedicated
-locked-files view, sort and filter results, and terminate the process or one of
-its parents when needed.
-
-Search is inspired by JetBrains-style navigation, with fragments, CamelCase
-abbreviations, and wildcards for quickly narrowing file names.
-
-| Search | Example match |
-| --- | --- |
-| `dll` | `plugin.dll` |
-| `MIMJWT` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
-| `micro*dll` | `Microsoft.IdentityModel.JsonWebTokens.dll` |
-| `FLEC*` | `FileLockExampleCli.dll`, `FileLockExampleCli.deps.json` |
-| `FLEC*.json` | `FileLockExampleCli.deps.json` |
-
-## Search
-
-Search is case-insensitive and updates as you type. The same rules apply to
-Processes, Locked files, and process details.
-
-| Query | Meaning |
-| --- | --- |
-| `dll` | A contiguous fragment, such as the extension in `plugin.dll` |
-| `MIMJWT` | Word or CamelCase prefixes in `Microsoft.IdentityModel.JsonWebTokens.dll` |
-| `micro*dll` | Chunks `micro` and `dll`, in that order |
-| `FLEC.` / `FLEC*` | Abbreviated stem in `FileLockExampleCli.dll` or `FileLockExampleCli.deps.json` |
-| `FLEC*.json` | Abbreviated stem followed by a `.json` fragment |
-| `*.dll` | A field containing `.dll` |
-| `micro*dll mapped` | Both terms must match |
-
-Plain terms match contiguous fragments or word/CamelCase prefixes. They do not
-match arbitrary scattered letters across a path. `*` matches zero or more
-characters, including path separators. Each chunk between wildcards supports
-the same fragment and abbreviation matching. Punctuation remains literal, so
-`FLEC.` requires a dot after the abbreviated stem. Patterns can match anywhere in a field;
-`*.dll` is not restricted to a filename ending in `.dll`.
-
-Filename and process-name matches rank above directory-only matches. Choosing
-an explicit sort order, such as CPU or PID, overrides relevance ordering.
-
-The matched path and `+N` count follow the active filter. When you open process
-details, file-related terms carry into the details search. Process-only terms,
-such as a PID, stay in the main search. Press `Esc` in details to clear its search
-and see all usages again.
-
-## Process actions
-
-Press `Space` to select processes, or `Ctrl+A` to select or deselect all visible
-processes. Selections survive filtering, so a selection may include processes
-that are no longer visible.
-
-- `k` requests normal termination of the selection, or the current process if nothing is selected.
-- `x` force kills the same targets.
-- Every action requires confirmation, with **Cancel** selected by default. The dialog lists the targets, including hidden selections.
-
-To act on a parent, press `Tab` or `→` to focus the ancestry tree. It initially
-selects the current process. Use `↑` to move toward its parents and `↓` to return
-toward the current process. Here, `k` and `x` apply only to the highlighted tree
-node, regardless of selections in the main list.
-
-The tree retains its captured process identities across refreshes. Before
-termination, the backend revalidates the target to guard against PID reuse.
-Protected processes and ancestors without an available identity cannot be
-stopped. A successful termination request returns focus to the results and
-refreshes the list.
-
-Stopping a parent may close its application and affect its children. It does not
-recursively terminate the entire tree. `oflh` does not directly unlock files;
-terminating a process may release the resources it holds.
+Use `?` for help. See the user guide for [search syntax](docs/usage.md#search),
+[process actions](docs/usage.md#process-actions), and the
+[full keyboard reference](docs/usage.md#keyboard-reference).
 
 ## Keyboard reference
 
-| Context | Key | Action |
-| --- | --- | --- |
-| Main view | `1` / `2` | Processes / Locked files |
-| Lists | `↑` / `↓` | Move selection |
-| Main view | `Enter` | Inspect process usages |
-| Main view or details | `/` | Start search |
-| Search input | `Enter` / `Esc` | Apply / cancel editing |
-| Main view | `Space` | Select or deselect process |
-| Main view | `Ctrl+A` | Select or deselect all visible processes |
-| Process actions | `k` / `x` | Normal termination / force kill |
-| Main view | `K` / `X` | Act on selection, or all filtered processes if none selected |
-| Main view or details | `r` / `a` | Refresh / toggle auto-refresh |
-| Main view | `n` / `p` | Sort by name / PID |
-| Main view | `m` / `c` | Sort by RAM / CPU, highest first |
-| Main view | `i` | Toggle side panel |
-| Main view | `Tab` / `→` | Focus ancestry tree |
-| Ancestry tree | `Tab` / `←` / `Esc` | Return to results |
-| Ancestry tree | `Home` / `End` | Select root / current process |
-| Process details | `l` | Toggle Locks only |
-| Process details | `←` / `→` | Page through selected path |
-| Navigation | `Esc` | Clear search, cancel, or go back |
-| Navigation | `?` | Show help |
-| Navigation | `R` / `D` | Open repository / donation page in your default browser |
-| Navigation | `q` / `Ctrl+C` | Back / quit |
+| Key | Action |
+| --- | --- |
+| `1` / `2` | Processes / Locked files |
+| `↑` / `↓` | Move through results |
+| `/` | Search |
+| `Enter` | Finish search editing / open process details |
+| `r` / `a` | Refresh / toggle five-second auto-refresh |
+| `Space` | Select or deselect a process |
+| `k` / `x` | Request termination / force kill |
+| `Tab` | Switch focus between results and ancestry tree |
+| `?` | Show help and scan limitations |
+| `Esc` | Clear search, cancel, or go back |
+| `q` / `Ctrl+C` | Back / quit |
 
-Only `1` and `2` switch tabs. `Tab` changes table/tree focus or selects a dialog
-action. Selected **Cancel** has a green background; selected **Terminate** or
-**Force kill** has a red background. A pointer also identifies the choice, and
-Cancel remains the default. `R` and `D` open GitHub and Donate; Help shows both
-URLs near the top. While editing a search, it stays in the search input.
+<a id="process-actions"></a>
+
+Process actions use the selection, or the current process if nothing is selected.
+Selections survive filtering; confirmation lists hidden selections too, and
+**Cancel** is the default. When the ancestry tree has focus, actions apply only
+to the highlighted ancestor. See [process actions](docs/usage.md#process-actions)
+before stopping a parent application.
+
+<a id="file-discovery-and-termination"></a>
+<a id="lock-evidence"></a>
+<a id="access-modes"></a>
+<a id="cpu-memory-and-ancestry"></a>
 
 ## Platform behavior
 
-The workflow is shared across platforms, but discovery and lock semantics depend
-on the operating system. Results are a snapshot of what the current user can
-inspect. Permissions, process exits, and concurrent file activity can limit them.
-When a scan has limitations, the footer shows "Results may be incomplete."
-Press `?` for the full scan details.
+Binaries are available for **Linux, macOS, and Windows on x86-64 and ARM64**.
+The interface is shared, but file discovery and lock detection depend on the OS.
 
-### File discovery and termination
-
-| Platform | Discovery | Normal termination (`k`) |
+| Platform | File usage discovery | Lock evidence |
 | --- | --- | --- |
-| Linux | `/proc`: file descriptors, CWD, executable, mapped files, deleted-but-open files | `SIGTERM` with `pidfd` identity validation |
-| macOS | `libproc`: vnode descriptors, CWD, executable, mapped files | `SIGTERM` after start-time validation |
-| Windows | Restart Manager, Toolhelp modules and executables | `WM_CLOSE` for process windows |
+| Linux | Open descriptors, working directories, executables, mapped files, deleted-but-open files via `/proc` | Held FLOCK, POSIX, and OFD locks |
+| macOS | Vnode descriptors, working directories, executables, mapped files via `libproc` | POSIX byte-range conflicts; flock-only locks may be missed |
+| Windows | Restart Manager resource users, modules and executables via Toolhelp | Read, write, or delete sharing conflicts; reported owners are unverified |
 
-Windows console and service processes may require explicit force termination.
-Windows discovery does not cover CWD, directory handles, or deleted files.
-On Linux, other mount namespaces may require running `oflh` inside the relevant
-container. Elevated privileges can improve visibility but do not remove every
-platform limitation.
+On Windows, a sharing conflict does not prove which reported process caused it.
+Discovery does not cover working directories, directory handles, or deleted files,
+and byte-range locks are not enumerated.
 
-### Lock evidence
+Results are a snapshot limited by permissions, process exits, and concurrent file
+activity. When the footer says **“Results may be incomplete,”** press `?` for
+details. See [platform support and limitations](docs/platform-support.md) for the
+full detection scope, termination behavior, and metric definitions.
 
-An open file is not necessarily locked. The Locked files view requires additional
-evidence:
+## Common questions
 
-| Platform | Evidence | Scope |
-| --- | --- | --- |
-| Linux | Held FLOCK, POSIX, and OFD locks from `/proc/PID/fdinfo` | Subject to permissions, namespaces, and scan timing |
-| macOS | POSIX byte-range conflicts queried with `F_GETLK` | First conflicting range per readable file; flock-only locks and additional ranges may be missed |
-| Windows | Read, write, or delete sharing conflicts, correlated with Restart Manager resource users | Reported users are labeled **owner unverified**; byte-range locks are not enumerated |
+### Can oflh unlock a file?
 
-On Windows, a sharing conflict confirms the file is restricted, but does not
-prove which reported process imposed that restriction. Permission-denied errors
-alone are never classified as locks. Lock queries do not modify file contents.
-Advisory locks do not necessarily prevent ordinary reads or writes.
+It can help you find and stop a process using the file. It does not remove locks
+directly or bypass OS permissions. Close the application normally first when
+possible; force killing can lose unsaved work.
 
-### Access modes
+### Why is a process listed but the Locked files view is empty?
 
-The **ACCESS** column summarizes the usages matching the current search.
-`read/write` means both modes were observed, possibly on different files. `cwd`
-means the process uses the folder as its working directory; it does not imply
-read or write access. These labels describe observed access modes, not live I/O
-activity or proof of a lock.
+File usage and file locks are different. A process can have an open descriptor
+or mapped file without holding a detectable lock. The Locked files view requires
+additional evidence, and each platform has detection limits.
 
-Read access uses green, write access uses amber, and confirmed locks use muted
-red. Text labels carry the meaning without relying on color.
+### Why are some processes or locks missing?
 
-### CPU, memory, and ancestry
+Permissions and platform coverage limit what can be inspected. Elevated
+privileges may improve visibility, but cannot guarantee complete results. On
+Linux, inspecting another container may require running `oflh` inside its mount
+namespace. Check `?` for scan warnings and the [platform reference](docs/platform-support.md).
 
-All three platforms collect resident memory and up to eight observed ancestors.
-Memory is RSS on Unix and working set on Windows.
+### Does oflh support scripts or JSON output?
 
-CPU measures a process's share of total machine capacity over the sampling
-interval: 100% means all CPUs. It requires two samples of the same process. A
-lightweight metrics sample runs about one second after the initial results;
-use `a` for regular updates. Unavailable metrics appear as a dash, for example when
-permissions or process exit prevent inspection.
+File inspection requires an interactive terminal; `oflh` currently has no JSON
+or non-interactive scan output. `--help` and `--version` work without a TTY.
 
-## Testing and development
+<a id="performance"></a>
+<a id="testing-and-development"></a>
+<a id="terminal-recommendation"></a>
 
-CI runs on native Linux, macOS, and Windows runners for both x86-64 and ARM64.
-The release workflow uses the same six-platform matrix.
+## Documentation and development
 
-The tests cover real process discovery, memory, two-sample CPU, parent identity,
-platform-specific lock evidence, stale-identity rejection, and force termination
-of isolated test processes and a parent discovered through its child. Tests also
-check lock release on refresh, POSIX read/write/range locks, and Windows
-read/write/delete sharing conflicts. An ordinary open file is checked separately to
-ensure it is not reported as locked.
+- [User guide](docs/usage.md): search syntax, keyboard shortcuts, process actions, and terminal support.
+- [Platform reference](docs/platform-support.md): discovery, lock evidence, and permissions.
+- [Contributing](CONTRIBUTING.md) and [development](docs/development.md): build and test instructions.
+- [Architecture](docs/architecture.md): native backends and safety boundaries.
+- [Performance measurements](docs/performance.md): benchmark methodology, results, and the historical Go-to-Rust comparison.
+- [Releasing](docs/releasing.md): maintainer packaging instructions.
 
-TUI tests cover search, selection, ancestry, safe confirmation, and responsive
-layouts. A real PTY/ConPTY test checks native startup, input, resizing, and quit.
-Four small `.txt` fixtures record expected screens for regression checks; they
-are test data, not runtime files or application dependencies.
+Run `cargo xtask check` for formatting, Clippy, and workspace tests. CI covers
+native Linux, macOS, and Windows on x86-64 and ARM64.
 
-```sh
-cargo xtask check  # rustfmt, Clippy, and workspace tests
-```
+<a id="project-information"></a>
 
-See [Contributing](CONTRIBUTING.md) to get started, [Development](docs/development.md)
-for build and test commands, and [Architecture](docs/architecture.md) for design
-and safety boundaries. Maintainers can find packaging instructions in [Releasing](docs/releasing.md).
+`oflh` is in beta. [Report a bug](https://github.com/karimz1/open-file-lock-handle/issues)
+with the version, operating system, and steps to reproduce it.
 
-## Project information
-
-`oflh` is in beta. Report bugs and platform-specific behavior through
-[GitHub Issues](https://github.com/karimz1/open-file-lock-handle/issues).
-Include the version, operating system, and steps to reproduce the problem.
-
-Early releases used the name `grip`. The project was renamed to Open File Lock
-Handle (`oflh`) in v0.0.5.
-
-Licensed under [MIT](LICENSE). To support development, you can
-[buy me a coffee](https://buymeacoffee.com/karimz1).
+Licensed under [MIT](LICENSE). [Support development](https://buymeacoffee.com/karimz1).
