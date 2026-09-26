@@ -6,9 +6,13 @@
 
 # oflh — Find which process is using a file
 
+[![Platforms](https://img.shields.io/badge/platforms-Linux_%C2%B7_macOS_%C2%B7_Windows-64748b?style=flat)](#platform-behavior)
 [![GitHub Downloads](https://img.shields.io/github/downloads/karimz1/open-file-lock-handle/total.svg)](https://github.com/karimz1/open-file-lock-handle/releases)
 [![CI](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml/badge.svg)](https://github.com/karimz1/open-file-lock-handle/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+[![Listed on AwesomeTUI](https://img.shields.io/badge/AwesomeTUI-listed-64748b?style=flat)](https://awesometui.com/open-file-lock-handle)
+[![Listed on AlternativeTo](https://img.shields.io/badge/AlternativeTo-listed-64748b?style=flat)](https://alternativeto.net/software/oflh-open-file-lock-handle/about/)
 
 **Open File Lock Handle (`oflh`) finds processes using a file or directory on
 Windows, Linux, and macOS.** It is a command-line tool with an interactive
