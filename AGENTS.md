@@ -20,6 +20,18 @@
 - Keep scanning off the UI thread, queues bounded, cancellation cooperative, and stale generations rejected. Avoid periodic redraws while idle.
 - Preserve the current keyboard workflow and responsive terminal appearance. A focused ancestry tree retains its captured identities across refreshes.
 
+## README and documentation
+
+- Write for someone trying to find which process is using a file. Lead with what `oflh` does, when to use it, supported platforms, installation, and a short path to the first useful result. Use plain language and concrete examples.
+- Keep `README.md` as the landing page: purpose, common problems, installation, quick start, essential shortcuts, and key limitations. Keep complete search rules, selection behavior, and process actions in `docs/usage.md`; keep detailed OS coverage in `docs/platform-support.md`. Link to reference sections rather than duplicating them. The README owns the quick start.
+- Keep architecture, contributor workflows, release procedures, and historical Go-to-Rust comparisons in their dedicated documents. Link to benchmarks from the README without making implementation history the main selling point.
+- Improve discoverability with descriptive headings and natural terms users search for, such as files in use, locked files, and open handles. Avoid keyword stuffing, artificial AI-specific wording, unsupported superlatives, and promises of better search rankings. Clear documentation should serve both readers and automated tools.
+- Verify commands, flags, shortcuts, platform claims, and output formats against the implementation. Verify download filenames and available architectures against published release assets when changing installation instructions. Show how to run a standalone download before assuming it is on `PATH`.
+- Preserve the distinction between file usage and proven lock evidence, Windows owner uncertainty, permission limits, and termination consequences. Keep essential limitations near the relevant claims even when fuller explanations live elsewhere.
+- When moving or renaming sections, preserve existing README anchors where practical and point readers to the new reference location. Check relative links, anchors, image paths, and Markdown formatting; inspect the rendered page when changing layout or visuals.
+- Keep repository descriptions concise and topics focused on actual capabilities, platforms, and use cases. Avoid redundant topics and other tools' names as tags. Change live GitHub metadata only within the user's authorized scope; documentation maintenance alone does not authorize publishing or pushing changes.
+- Review edits for accuracy, ease of getting started, repetition, and useful navigation. Report what was verified and any remaining gaps; distinguish editorial assessments from measured search or traffic results.
+
 ## Required validation
 
 - Run `cargo xtask check` before a final implementation handoff. It runs `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, and `cargo test --workspace --locked`.
