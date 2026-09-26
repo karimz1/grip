@@ -1,12 +1,12 @@
   oflh   1 Processes  2 Locked files                                                                                                                      test
-  /build  ·  MANUAL · r refresh
+  MANUAL · r refresh  ·  /build
   Navigation · / search · Tab/→ tree
   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
   │/ Search PID, process, path… · * wildcard                                                                                                                 │
   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
   1 of 1 processes · sort: pid
-     PID     PROCESS           USER        CPU%    RAM        ACCESS      MATCHED PATH                          dotnet · PID 424242
-     424242  dotnet            alice       2.4%    31.0 MiB   read/write  FileLockExampleCli.dll +2             ──────────────────────────────────────────────
+     PID     PROCESS           USER        CPU%    RAM        ACCESS      LOCKS MATCHED PATH                    dotnet · PID 424242
+     424242  dotnet            alice       2.4%    31.0 MiB   read/write  1     FileLockExampleCli.dll +2       ──────────────────────────────────────────────
                                                                                                                 CPU 2.4%   RAM 31.0 MiB
                                                                                                                 CPU = share of machine · RAM = RSS
 

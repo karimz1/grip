@@ -329,3 +329,123 @@ fn help_links_precede_warnings_and_open_with_shortcuts() {
     ));
     export_visual("help-links", terminal.backend().buffer());
 }
+
+fn rendered_buffer(application: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| view::draw(frame, application))
+        .unwrap();
+    terminal.backend().buffer().clone()
+}
+
+fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
+    buffer
+        .content
+        .chunks(buffer.area.width as usize)
+        .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn process_lock_counts_follow_distinct_filtered_paths_and_refresh() {
+    let mut application = app();
+    let mut snapshot = application.snapshot.clone();
+    let process = &mut snapshot.processes[0];
+    let mut duplicate = process.usages[0].clone();
+    duplicate.lock = Some(LockEvidence::Kernel("POSIX READ".into()));
+    process.usages.push(duplicate);
+    process.usages[2].lock = Some(LockEvidence::SharingConflict(AccessKind::Delete));
+    application.replace(snapshot);
+    assert_eq!(application.rows[0].locked_paths, 2);
+
+    for width in [28, 48, 80, 120, 160] {
+        let buffer = rendered_buffer(&mut application, width, 30);
+        let text = buffer_text(&buffer);
+        let header = text.lines().nth(7).unwrap();
+        let column = header.find("LOCKS").expect("lock column remains visible");
+        assert_eq!(buffer[(column as u16, 8)].symbol(), "2");
+        if width >= 48 {
+            assert!(header.contains("PATH"));
+        }
+    }
+
+    key(&mut application, K::Char('/'));
+    application.paste("deps.json");
+    key(&mut application, K::Enter);
+    assert_eq!(application.rows[0].locked_paths, 0);
+    key(&mut application, K::Esc);
+    assert_eq!(application.rows[0].locked_paths, 2);
+    key(&mut application, K::Enter);
+    assert!(buffer_text(&rendered_buffer(&mut application, 160, 40)).contains("2 locked files"));
+    key(&mut application, K::Esc);
+
+    let mut snapshot = application.snapshot.clone();
+    for usage in &mut snapshot.processes[0].usages {
+        usage.lock = None;
+    }
+    application.replace(snapshot);
+    assert_eq!(application.rows[0].locked_paths, 0);
+    let buffer = rendered_buffer(&mut application, 80, 30);
+    let text = buffer_text(&buffer);
+    let column = text.lines().nth(7).unwrap().find("LOCKS").unwrap();
+    assert_eq!(buffer[(column as u16, 8)].symbol(), "0");
+}
+
+#[test]
+fn refresh_mode_is_visible_in_details_and_shared_with_main() {
+    for (width, height) in [(28, 18), (48, 20), (80, 24), (160, 40)] {
+        let mut application = app();
+        application.target.path = format!("/{}", "long-directory/".repeat(20)).into();
+        key(&mut application, K::Enter);
+        let text = buffer_text(&rendered_buffer(&mut application, width, height));
+        assert!(text.lines().nth(1).unwrap().contains("MANUAL"));
+        key(&mut application, K::Char('a'));
+        let buffer = rendered_buffer(&mut application, width, height);
+        assert!(
+            buffer_text(&buffer)
+                .lines()
+                .nth(1)
+                .unwrap()
+                .contains("LIVE · every 5s")
+        );
+        if width == 48 {
+            export_visual("details-live-compact", &buffer);
+        }
+        application.scanning = true;
+        assert!(
+            buffer_text(&rendered_buffer(&mut application, width, height))
+                .lines()
+                .nth(1)
+                .unwrap()
+                .contains("LIVE")
+        );
+        application.scanning = false;
+        key(&mut application, K::Esc);
+        assert!(
+            buffer_text(&rendered_buffer(&mut application, width, height))
+                .lines()
+                .nth(1)
+                .unwrap()
+                .contains("LIVE")
+        );
+        key(&mut application, K::Char('a'));
+        key(&mut application, K::Enter);
+        assert!(
+            buffer_text(&rendered_buffer(&mut application, width, height))
+                .lines()
+                .nth(1)
+                .unwrap()
+                .contains("MANUAL")
+        );
+        application.replace(Snapshot::default());
+        assert!(
+            buffer_text(&rendered_buffer(&mut application, width, height))
+                .lines()
+                .nth(1)
+                .unwrap()
+                .contains("MANUAL")
+        );
+    }
+}
